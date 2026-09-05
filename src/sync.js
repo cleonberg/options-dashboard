@@ -105,3 +105,26 @@ export async function pushLeg(uid, leg) {
     await dbLocal.legs.update(leg.id, { dirty: true });
   }
 }
+
+export async function forceSync(uid) {
+  console.log("Force sync started…");
+
+  const allCampaigns = await dbLocal.campaigns.toArray();
+  const allLegs = await dbLocal.legs.toArray();
+
+  const dirtyCampaigns = allCampaigns.filter(c => c.dirty);
+  const dirtyLegs = allLegs.filter(l => l.dirty);
+
+  console.log("Dirty campaigns:", dirtyCampaigns.length);
+  console.log("Dirty legs:", dirtyLegs.length);
+
+  for (const c of dirtyCampaigns) {
+    await pushCampaign(uid, c);
+  }
+
+  for (const l of dirtyLegs) {
+    await pushLeg(uid, l);
+  }
+
+  console.log("Force sync complete.");
+}

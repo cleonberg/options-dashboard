@@ -1,29 +1,38 @@
 import React, { useRef } from "react";
-import dbLocal from "../db/dexie.js";
+import dbLocal from "../db/dexie";
 import GoogleSignIn from "./GoogleSignIn.jsx";
+import { forceSync, initialSync } from "../sync";
+import { auth } from "../auth";
 
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
 
   // ---------- Reset DB ----------
   async function handleReset() {
-    if (!window.confirm("Reset ALL data? This cannot be undone.")) return;
+    if (!window.confirm("Reset ALL local data? This cannot be undone.")) return;
 
-    await dbLocal.trades.clear();
+    const uid = auth.currentUser?.uid;
+
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
+
+    await dbLocal.campaigns.toCollection().modify({ dirty: false });
+    await dbLocal.legs.toCollection().modify({ dirty: false });
+
+    if (uid) {
+      await initialSync(uid);
+    }
 
     if (reloadAll) await reloadAll();
   }
 
   // ---------- Export DB ----------
   async function handleExport() {
-    const trades = await dbLocal.getAllTrades();
     const campaigns = await dbLocal.getAllCampaigns();
     const legs = await dbLocal.getAllLegs();
 
     const blob = new Blob(
-      [JSON.stringify({ trades, campaigns, legs }, null, 2)],
+      [JSON.stringify({ campaigns, legs }, null, 2)],
       { type: "application/json" }
     );
 
@@ -54,13 +63,9 @@ export default function SettingsTab({ reloadAll }) {
       return;
     }
 
-    await dbLocal.trades.clear();
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
 
-    if (Array.isArray(data.trades)) {
-      for (const t of data.trades) await dbLocal.addTrade(t);
-    }
     if (Array.isArray(data.campaigns)) {
       for (const c of data.campaigns) await dbLocal.addCampaign(c);
     }
@@ -105,6 +110,16 @@ export default function SettingsTab({ reloadAll }) {
           onChange={handleImport}
         />
       </div>
+
+      <div className="settings-row">
+        <button
+          className="secondary"
+          onClick={() => forceSync(auth.currentUser.uid)}
+        >
+          Force Sync Now
+        </button>
+      </div>
+
     </div>
   );
 }

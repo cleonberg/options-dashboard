@@ -1,0 +1,32 @@
+/* src/styles/summary-table.css */
+
+.campaign-summary {
+  padding: 20px;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.summary-table th,
+.summary-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+}
+
+.summary-table tr:hover {
+  background: #f5f5f5;
+  cursor: pointer;
+}
+
+.closed-section {
+  margin-top: 20px;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: bold;
+  margin-bottom: 10px;
+}

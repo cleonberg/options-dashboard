@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 
 export default function LegForm({ selectedCampaign, onAddLeg }) {
-  const [type, setType] = useState("sell_call");
+  const [type, setType] = useState("sell_put");
   const [qty, setQty] = useState("");
   const [strike, setStrike] = useState("");
   const [expiry, setExpiry] = useState("");
@@ -16,6 +16,11 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
   }
 
   async function submit(e) {
+    if (!qty || !strike || !expiry || !openPrice) {
+      alert("Please complete all fields before adding a leg.");
+      return;
+    }
+
     e.preventDefault();
 
     const leg = {

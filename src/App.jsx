@@ -5,10 +5,9 @@ import DashboardTab from "./components/DashboardTab.jsx";
 import AllLegsTab from "./components/AllLegsTab.jsx";
 import CampaignsTab from "./components/CampaignsTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
-import FirestoreDebug from "./components/FirestoreDebug.jsx"
+
 
 import {
-  loadTrades,
   loadCampaignsAndLegs,
   computeDashboardSummary,
 } from "./logic/logic.js";
@@ -19,9 +18,6 @@ import "./styles/styles.css";
 export default function App() {
   // ---------- State ----------
   const [activeTab, setActiveTab] = useState("dashboard");
-
-  const [trades, setTrades] = useState([]);
-  const [visibleTrades, setVisibleTrades] = useState([]);
 
   const [campaigns, setCampaigns] = useState([]);
   const [legs, setLegs] = useState([]);
@@ -42,11 +38,8 @@ export default function App() {
   // ---------- Load Data ----------
   useEffect(() => {
     async function init() {
-      const t = await loadTrades();
       const { campaigns: c, legs: l } = await loadCampaignsAndLegs();
 
-      setTrades(t);
-      setVisibleTrades(t);
       setCampaigns(c);
       setLegs(l);
 
@@ -64,18 +57,19 @@ export default function App() {
 
   // ---------- Reload Helper ----------
   async function reloadAll() {
-    const t = await loadTrades();
     const { campaigns: c, legs: l } = await loadCampaignsAndLegs();
 
-    setTrades(t);
-    setVisibleTrades(t);
     setCampaigns(c);
     setLegs(l);
 
-    if (c.length === 0) {
+    // Auto-select first campaign
+    if (c.length > 0) {
+      setSelectedCampaignId(c[0].id);
+    } else {
       setSelectedCampaignId(null);
     }
 
+    // Compute dashboard summary
     setDashboardSummary(computeDashboardSummary(c, l));
   }
 
@@ -83,7 +77,15 @@ export default function App() {
   function renderTab() {
     switch (activeTab) {
       case "dashboard":
-        return <DashboardTab summary={dashboardSummary} />;
+        return (
+          <DashboardTab
+            summary={dashboardSummary}
+            campaigns={campaigns}
+            legs={legs}
+            setSelectedCampaignId={setSelectedCampaignId}
+            setActiveTab={setActiveTab}
+          />
+        );
 
       case "trades":
         return (
@@ -140,10 +142,10 @@ export default function App() {
     }
   }
 
+
   return (
     <>
       <div className="app-header">
-        <FirestoreDebug />
         <div className="app-title">Options Dashboard</div>
         <div className="app-subtitle">Offline + Dexie + React</div>
       </div>

@@ -17,10 +17,6 @@ export function cashClass(x) {
 /* -------------------------------------------------------
    Loaders
 ------------------------------------------------------- */
-export async function loadTrades() {
-  return dbLocal.getAllTrades();
-}
-
 export async function loadCampaignsAndLegs() {
   const campaigns = await dbLocal.getAllCampaigns();
   const legs = await dbLocal.getAllLegs();
@@ -303,4 +299,24 @@ export function computeDashboardSummary(campaigns, legs) {
       ? new Date(Math.max(...closeDates)).toISOString().slice(0, 10)
       : null
   };
+}
+
+export function fmtCampaignDaysLeft(campaign, legs) {
+  if (!legs) return "-";  // safety
+
+  const legsForCampaign = legs.filter(l => l.campaignId === campaign.id);
+  const openLegs = legsForCampaign.filter(l => l.status === "open");
+
+  if (openLegs.length === 0) return "-";
+
+  const expirations = openLegs
+    .map(l => new Date(l.expiry))
+    .filter(d => !isNaN(d));
+
+  if (expirations.length === 0) return "-";
+
+  const soonest = expirations.sort((a, b) => a - b)[0];
+  const today = new Date();
+
+  return Math.ceil((soonest - today) / 86400000);
 }

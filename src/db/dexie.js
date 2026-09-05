@@ -6,7 +6,6 @@ const dbLocal = new Dexie("optionsDashboard");
 dbLocal.version(1).stores({
   campaigns: "id, updatedAt, dirty",
   legs: "id, campaignId, updatedAt, dirty",
-  trades: "id, updatedAt, dirty"
 });
 
 /* -------------------------------------------------------
@@ -26,13 +25,6 @@ export async function markDirty(table, id, changes) {
     updatedAt: new Date().toISOString()
   });
 }
-
-/* -------------------------------------------------------
-   Trades
-------------------------------------------------------- */
-dbLocal.getAllTrades = async function () {
-  return await dbLocal.trades.toArray();
-};
 
 /* -------------------------------------------------------
    Campaigns

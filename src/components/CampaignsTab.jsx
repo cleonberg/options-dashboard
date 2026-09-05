@@ -15,6 +15,7 @@ import LegForm from "./LegForm.jsx";
 import EditLegForm from "./EditLegForm.jsx";
 
 import { updateCampaign, updateLeg } from "../logic/synclogic";
+import dbLocal from "../db/dexie.js";
 
 export default function CampaignsTab(props) {
   const {
@@ -40,16 +41,8 @@ export default function CampaignsTab(props) {
     setRollOpenPrice
   } = props;
 
-  const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);
-  const legsForCampaign = legs.filter(l => l.campaignId === selectedCampaignId);
-
-  const summary = selectedCampaign
-    ? computeCampaignSummary(selectedCampaign, legsForCampaign)
-    : null;
-
   const [newTicker, setNewTicker] = useState("");
   const [newNotes, setNewNotes] = useState("");
-  const [newTag, setNewTag] = useState("");
 
   // ---------- Reload ----------
   async function reloadAll() {
@@ -69,7 +62,6 @@ export default function CampaignsTab(props) {
       ticker: newTicker.trim(),
       notes: newNotes.trim(),
       status: "open",
-      tags: []
     });
 
     await reloadAll();
@@ -166,6 +158,25 @@ export default function CampaignsTab(props) {
     await reloadAll();
   }
 
+  async function onDeleteCampaign() {
+    if (!selectedCampaignId) return;
+
+    const ok = confirm("Delete this campaign?");
+    if (!ok) return;
+
+    await dbLocal.campaigns.delete(selectedCampaignId);
+    await dbLocal.legs.where("campaignId").equals(selectedCampaignId).delete();
+
+    await reloadAll();
+    
+    // Pick a new campaign automatically
+    if (campaigns.length > 0) {
+      setSelectedCampaignId(campaigns[0].id);
+    } else {
+      setSelectedCampaignId(null);
+    }
+  }
+
   // ---------- Reopen Campaign ----------
   async function onReopenCampaign() {
     await updateCampaign(selectedCampaignId, {
@@ -174,20 +185,6 @@ export default function CampaignsTab(props) {
     });
 
     await reloadAll();
-  }
-
-  // ---------- Add Tag ----------
-  async function onAddTag() {
-    if (!newTag.trim()) return;
-
-    const updatedTags = [...(selectedCampaign.tags || []), newTag.trim()];
-
-    await updateCampaign(selectedCampaign.id, {
-      tags: updatedTags
-    });
-
-    await reloadAll();
-    setNewTag("");
   }
 
   // ---------- Status Badge ----------
@@ -212,6 +209,16 @@ export default function CampaignsTab(props) {
       </span>
     );
   }
+
+  // ---------- Grouped Campaign Selector ----------
+  const grouped = groupCampaignsByTicker(campaigns);
+
+  const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);
+  const legsForCampaign = legs.filter(l => l.campaignId === selectedCampaignId);
+
+  const summary = selectedCampaign
+    ? computeCampaignSummary(selectedCampaign, legsForCampaign)
+    : null;
 
   // ---------- Empty State ----------
   if (campaigns.length === 0) {
@@ -245,14 +252,48 @@ export default function CampaignsTab(props) {
   if (!selectedCampaign) {
     return (
       <div className="card">
-        <h3>No campaign selected</h3>
-        <p>Select a campaign or create one above.</p>
+        <h3>Select Campaign</h3>
+
+        <select
+          className="input"
+          value={selectedCampaignId ?? ""}
+          onChange={e => {
+            const value = e.target.value;
+            setSelectedCampaignId(value === "" ? null : value);
+          }}
+        >
+          {Object.entries(grouped).map(([ticker, group]) => (
+            <optgroup key={ticker} label={ticker}>
+              {group.map(c => (
+                <option key={c.id} value={c.id}>
+                  #{c.id} ({c.status})
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+
+        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+          <button onClick={onCloseCampaign}>Close Campaign</button>
+
+          {selectedCampaign && selectedCampaign.status === "closed" && (
+            <button className="secondary" onClick={onReopenCampaign}>
+              Reopen Campaign
+            </button>
+          )}
+
+          <button
+            style={{ backgroundColor: "#d9534f", color: "white" }}
+            onClick={onDeleteCampaign}
+          >
+            Delete Campaign
+          </button>
+        </div>
       </div>
+
     );
   }
 
-  // ---------- Grouped Campaign Selector ----------
-  const grouped = groupCampaignsByTicker(campaigns);
 
   // ---------- Timeline ----------
   const timeline = getCampaignTimeline(legsForCampaign);
@@ -292,8 +333,11 @@ export default function CampaignsTab(props) {
 
         <select
           className="input"
-          value={selectedCampaignId || ""}
-          onChange={e => setSelectedCampaignId(Number(e.target.value))}
+          value={selectedCampaignId ?? ""}
+          onChange={e => {
+            const value = e.target.value;
+            setSelectedCampaignId(value === "" ? null : value);
+          }}
         >
           {Object.entries(grouped).map(([ticker, group]) => (
             <optgroup key={ticker} label={ticker}>
@@ -309,32 +353,19 @@ export default function CampaignsTab(props) {
         <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
           <button onClick={onCloseCampaign}>Close Campaign</button>
 
-          {selectedCampaign.status === "closed" && (
+          {selectedCampaign && selectedCampaign.status === "closed" && (            
             <button className="secondary" onClick={onReopenCampaign}>
               Reopen Campaign
             </button>
           )}
-        </div>
-      </div>
 
-      {/* ---------- Tags ---------- */}
-      <div className="card">
-        <h3>Tags</h3>
+          <button
+            style={{ backgroundColor: "#d9534f", color: "white" }}
+            onClick={onDeleteCampaign}
+          >
+            Delete Campaign
+          </button>
 
-        <div className="tag-row">
-          {selectedCampaign.tags?.map(t => (
-            <span key={t} className="tag">{t}</span>
-          ))}
-        </div>
-
-        <div className="form-row">
-          <input
-            className="input"
-            placeholder="Add tag"
-            value={newTag}
-            onChange={e => setNewTag(e.target.value)}
-          />
-          <button onClick={onAddTag}>Add Tag</button>
         </div>
       </div>
 
