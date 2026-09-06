@@ -8,17 +8,19 @@ export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
 
   // ---------- Reset DB ----------
-  async function handleReset() {
+ async function handleReset() {
     if (!window.confirm("Reset ALL local data? This cannot be undone.")) return;
 
     const uid = auth.currentUser?.uid;
 
+    // Clear local DB
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
 
-    await dbLocal.campaigns.toCollection().modify({ dirty: false });
-    await dbLocal.legs.toCollection().modify({ dirty: false });
+    // No need to modify after clear — nothing to modify.
+    // If you intended to clear dirty flags on remaining rows, do that before clear.
 
+    // Force a fresh pull from server
     if (uid) {
       await initialSync(uid);
     }

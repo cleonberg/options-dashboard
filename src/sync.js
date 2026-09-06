@@ -29,21 +29,59 @@ function toMillis(ts) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function safeToMillis(v) {
+  // Accept Firestore Timestamp, ISO string, number, or undefined
+  if (v == null) return 0;
+  try {
+    // If you already have a toMillis helper that handles Timestamp, use it
+    if (typeof _toMillis === "function") {
+      const m = _toMillis(v);
+      return Number.isFinite(m) ? m : Date.parse(String(v)) || 0;
+    }
+    // Fallbacks
+    if (typeof v === "number") return v;
+    if (v.toMillis && typeof v.toMillis === "function") return v.toMillis();
+    const parsed = Date.parse(String(v));
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch (err) {
+    console.warn("[initialSync] safeToMillis failed for", v, err);
+    return 0;
+  }
+}
+
+function normalizeDeleted(val) {
+  if (val === true || val === 1 || val === "1" || val === "true") return true;
+  return false;
+}
+
 /* -------------------------
    INITIAL SYNC
    ------------------------- */
 export async function initialSync(uid) {
+  if (!uid) {
+    console.warn("[initialSync] no uid provided");
+    return;
+  }
+
+  console.info("[initialSync] starting for uid", uid);
+
   const campaignsSnap = await getDocs(collection(db, "users", uid, "campaigns"));
   const legsSnap = await getDocs(collection(db, "users", uid, "legs"));
 
   // Sync campaigns
   for (const d of campaignsSnap.docs) {
     const remote = { id: d.id, ...d.data() };
-    const local = await dbLocal.campaigns.get(remote.id);
 
-    const remoteUpdated = toMillis(remote.updatedAt);
-    const localUpdated = toMillis(local?.updatedAt);
-    const localDeletedAt = toMillis(local?.deletedAt);
+    // Normalize tombstone representation
+    remote.deleted = normalizeDeleted(remote.deleted);
+
+    // Defensive millis conversion
+    const remoteUpdated = safeToMillis(remote.updatedAt);
+    const local = await dbLocal.campaigns.get(remote.id);
+    const localUpdated = safeToMillis(local?.updatedAt);
+    const localDeletedAt = safeToMillis(local?.deletedAt);
+
+    console.debug("[initialSync] campaign remote", remote.id, { remoteUpdated, remoteDeleted: remote.deleted, localExists: !!local, localUpdated, localDeletedAt });
 
     // If local tombstone is newer or equal, skip applying remote
     if (local?.deleted && localDeletedAt >= remoteUpdated) {
@@ -51,19 +89,30 @@ export async function initialSync(uid) {
       continue;
     }
 
+    // If remote is newer or local missing, apply remote (this will create local tombstone if remote.deleted)
     if (!local || remoteUpdated > localUpdated) {
-      await dbLocal.campaigns.put({ ...remote, dirty: false });
+      try {
+        await dbLocal.campaigns.put({ id: remote.id, ...remote, dirty: false });
+        console.debug("[initialSync] wrote campaign to Dexie", remote.id);
+      } catch (err) {
+        console.error("[initialSync] failed to write campaign to Dexie", remote.id, err);
+      }
     }
   }
 
   // Sync legs
   for (const d of legsSnap.docs) {
     const remote = { id: d.id, ...d.data() };
-    const local = await dbLocal.legs.get(remote.id);
 
-    const remoteUpdated = toMillis(remote.updatedAt);
-    const localUpdated = toMillis(local?.updatedAt);
-    const localDeletedAt = toMillis(local?.deletedAt);
+    // Normalize tombstone representation
+    remote.deleted = normalizeDeleted(remote.deleted);
+
+    const remoteUpdated = safeToMillis(remote.updatedAt);
+    const local = await dbLocal.legs.get(remote.id);
+    const localUpdated = safeToMillis(local?.updatedAt);
+    const localDeletedAt = safeToMillis(local?.deletedAt);
+
+    console.debug("[initialSync] leg remote", remote.id, { remoteUpdated, remoteDeleted: remote.deleted, localExists: !!local, localUpdated, localDeletedAt });
 
     if (local?.deleted && localDeletedAt >= remoteUpdated) {
       console.log("[initialSync] skip remote leg because local tombstone is newer", remote.id);
@@ -71,9 +120,16 @@ export async function initialSync(uid) {
     }
 
     if (!local || remoteUpdated > localUpdated) {
-      await dbLocal.legs.put({ ...remote, dirty: false });
+      try {
+        await dbLocal.legs.put({ id: remote.id, ...remote, dirty: false });
+        console.debug("[initialSync] wrote leg to Dexie", remote.id);
+      } catch (err) {
+        console.error("[initialSync] failed to write leg to Dexie", remote.id, err);
+      }
     }
   }
+
+  console.info("[initialSync] complete for uid", uid);
 }
 
 /* -------------------------

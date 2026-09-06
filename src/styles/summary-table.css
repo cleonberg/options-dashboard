@@ -30,3 +30,37 @@ details summary {
   font-weight: bold;
   margin-bottom: 10px;
 }
+
+/* Dark-theme overrides for summary table */
+.summary-table {
+  background: transparent;
+  color: var(--text-color, #fff);
+  border-collapse: collapse;
+}
+
+.summary-table th,
+.summary-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06); /* subtle divider on dark bg */
+  color: var(--text-color, #fff);
+}
+
+.summary-table tr:hover {
+  background: rgba(255,255,255,0.03); /* subtle hover on dark bg */
+  cursor: pointer;
+}
+
+/* Deleted campaigns specific container */
+.deleted-campaigns-section {
+  background: transparent !important;
+  color: var(--text-color, #fff);
+}
+
+/* Small card style for each deleted row */
+.deleted-campaigns-list > div {
+  background: rgba(255,255,255,0.02);
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--text-color, #fff);
+}
+

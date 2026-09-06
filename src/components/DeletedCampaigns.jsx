@@ -1,60 +1,62 @@
-// src/components/DeletedCampaigns.jsx
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { reopenCampaign } from "../sync/reopenCampaign";
 import { getDeletedCampaigns } from "../logic/localQueries";
-import { reopenCampaign } from "../logic/reopenCampaign";
 
 export default function DeletedCampaigns({ onRestored }) {
-  const [deleted, setDeleted] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [deleted, setDeleted] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [restoringId, setRestoringId] = React.useState(null);
 
   async function load() {
-    setLoading(true);
-    const rows = await getDeletedCampaigns();
-    setDeleted(rows);
-    setLoading(false);
+    try {
+      const rows = await getDeletedCampaigns();
+      setDeleted(Array.isArray(rows) ? [...rows] : []);
+    } catch (err) {
+      console.error("load failed", err);
+      setDeleted([]);
+    }
   }
 
-  useEffect(() => { load(); }, []);
+  React.useEffect(() => { load(); }, []);
 
-  async function handleUndelete(id) {
+  async function handleUndelete(id, e) {
+    if (e?.stopPropagation) e.stopPropagation();
     try {
       setLoading(true);
+      setRestoringId(id);
       await reopenCampaign(id);
-      // refresh local list
       await load();
       if (typeof onRestored === "function") onRestored(id);
-      alert("Campaign restored and pushed to server.");
     } catch (err) {
       console.error("Undelete failed", err);
       alert("Failed to restore campaign: " + (err.message || err));
     } finally {
       setLoading(false);
+      setRestoringId(null);
     }
   }
 
-  if (deleted.length === 0) return null;
-
   return (
-    <section>
+    <section className="deleted-campaigns-section">
       <h3>Deleted campaigns</h3>
-      if (!deleted.length) return <div style={{color:'#666'}}>No deleted campaigns</div>;
-
-      <div>
-        {deleted.map(c => (
+      <div className="deleted-campaigns-list">
+        {(deleted || []).map(c => (
           <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <strong>{c.ticker || c.id}</strong>
-              <div style={{ fontSize: 12, color: "#666" }}>{c.notes || "No notes"}</div>
+              <div style={{ fontSize: 12, color: "#bbb" }}>{c.notes || "No notes"}</div>
             </div>
             <button
-              onClick={() => handleUndelete(c.id)}
+              onClick={(e) => handleUndelete(c.id, e)}
               style={{ backgroundColor: "#5cb85c", color: "white", padding: "6px 10px", border: "none", borderRadius: 4 }}
-              disabled={loading}
+              disabled={loading || restoringId === c.id}
+              aria-label={`Undelete ${c.ticker || c.id}`}
             >
-              Undelete
+              {restoringId === c.id ? "Restoring…" : "Undelete"}
             </button>
           </div>
         ))}
+        {(!deleted || deleted.length === 0) && <div style={{ color: "#999", fontSize: 13 }}>No deleted campaigns</div>}
       </div>
     </section>
   );

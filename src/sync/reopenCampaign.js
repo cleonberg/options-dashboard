@@ -35,39 +35,50 @@ export async function reopenCampaign(id) {
 
   const now = new Date().toISOString();
 
-  // 1) Restore local campaign tombstone
-  const updated = await dbLocal.campaigns.update(id, {
-    deleted: false,
-    deletedAt: null,
-    dirty: true,
-    updatedAt: now
-  });
-  if (!updated) throw new Error("local campaign not found");
+  // Use a transaction so campaign + legs updates are atomic and fire change events together
+  try {
+    await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
+      console.debug('[reopenCampaign] starting local updates', id, now);
 
-  // 2) Restore local legs for that campaign (use safe query)
-  const legs = await safeWhereEquals(dbLocal.legs, "campaignId", id);
-  await Promise.all(
-    legs.map(l =>
-      dbLocal.legs.update(l.id, {
+      const updated = await dbLocal.campaigns.update(id, {
         deleted: false,
         deletedAt: null,
         dirty: true,
         updatedAt: now
-      })
-    )
-  );
+      });
+      if (!updated) throw new Error("local campaign not found");
 
-  // 3) Push restored campaign and legs to server
+      const legs = await safeWhereEquals(dbLocal.legs, "campaignId", id);
+      await Promise.all(
+        legs.map(l =>
+          dbLocal.legs.update(l.id, {
+            deleted: false,
+            deletedAt: null,
+            dirty: true,
+            updatedAt: now
+          })
+        )
+      );
+
+      console.debug('[reopenCampaign] local updates applied', { id, updated, legsCount: legs.length });
+    });
+  } catch (err) {
+    console.error('[reopenCampaign] transaction failed', err);
+    throw err;
+  }
+
+  // Push restored campaign and legs to server (fire-and-forget)
   const campaign = await dbLocal.campaigns.get(id);
   if (campaign) {
-    await pushCampaign(uid, campaign);
+    pushCampaign(uid, campaign).catch(err => console.warn("pushCampaign failed", err));
   } else {
     throw new Error("local campaign missing after update; cannot push");
   }
 
-  // push legs using the same safe query (avoid direct .where without guard)
   const updatedLegs = await safeWhereEquals(dbLocal.legs, "campaignId", id);
-  await Promise.all(updatedLegs.map(l => pushLeg(uid, l)));
+  updatedLegs.forEach(l => pushLeg(uid, l).catch(err => console.warn("pushLeg failed", err)));
 
-  return { ok: true };
+  const refreshed = await dbLocal.campaigns.get(id);
+  console.debug('[reopenCampaign] returning refreshed', refreshed);
+  return refreshed;
 }
