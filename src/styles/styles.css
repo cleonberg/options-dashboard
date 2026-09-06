@@ -223,3 +223,9 @@ button.secondary {
   color: #9fb3ff;
   margin-bottom: 2px;
 }
+
+.deleted-campaigns-section {
+  border-top: 1px solid #e6e6e6;
+  padding-top: 16px;
+  background: #fafafa;
+}

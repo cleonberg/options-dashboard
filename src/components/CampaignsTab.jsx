@@ -14,8 +14,7 @@ import {
 import LegForm from "./LegForm.jsx";
 import EditLegForm from "./EditLegForm.jsx";
 
-import { updateCampaign, updateLeg } from "../logic/synclogic";
-import dbLocal from "../db/dexie.js";
+import { updateCampaign, updateLeg, deleteCampaign } from "../logic/synclogic";
 
 export default function CampaignsTab(props) {
   const {
@@ -160,20 +159,33 @@ export default function CampaignsTab(props) {
 
   async function onDeleteCampaign() {
     if (!selectedCampaignId) return;
+    if (!confirm("Delete this campaign?")) return;
 
-    const ok = confirm("Delete this campaign?");
-    if (!ok) return;
+    // Optimistic UI remove
+    const prevCampaigns = campaigns;
+    setCampaigns(prev => prev.filter(c => c.id !== selectedCampaignId));
+    setSelectedCampaignId(null);
 
-    await dbLocal.campaigns.delete(selectedCampaignId);
-    await dbLocal.legs.where("campaignId").equals(selectedCampaignId).delete();
+    console.log('[UI] calling deleteCampaign', { id: selectedCampaignId });
+    const res = await deleteCampaign(selectedCampaignId);
+    console.log('[UI] deleteCampaign result', res);
 
-    await reloadAll();
-    
-    // Pick a new campaign automatically
-    if (campaigns.length > 0) {
-      setSelectedCampaignId(campaigns[0].id);
+    if (res?.queued) {
+      alert("Delete queued (will retry). See console for details.");
+    } else if (!res?.ok) {
+      const cls = res.classification || {};
+      if (cls.type === "permission") {
+        alert("Delete failed: permission denied. Check sign-in or Firestore rules.");
+      } else {
+        alert("Delete failed: " + (res.error?.message || "unknown error") + ". See console for details.");
+      }
+      // restore UI
+      setCampaigns(prevCampaigns);
+      if (prevCampaigns.length > 0) setSelectedCampaignId(prevCampaigns[0].id);
     } else {
-      setSelectedCampaignId(null);
+      alert("Delete succeeded (remote and local).");
+      // refresh UI from DB (getAllCampaigns should filter tombstones)
+      await reloadAll();
     }
   }
 

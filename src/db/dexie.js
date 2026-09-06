@@ -1,11 +1,21 @@
 // src/db/dexie.js
 import Dexie from "dexie";
-
 const dbLocal = new Dexie("optionsDashboard");
 
+/*
+  Versioning:
+  - v1: original schema
+  - v2: add deletionJobs and ensure deleted fields are present
+*/
 dbLocal.version(1).stores({
   campaigns: "id, updatedAt, dirty",
-  legs: "id, campaignId, updatedAt, dirty",
+  legs: "id, campaignId, updatedAt, dirty"
+});
+
+dbLocal.version(2).stores({
+  campaigns: "id, updatedAt, dirty, deleted",
+  legs: "id, campaignId, updatedAt, dirty, deleted",
+  deletionJobs: "++id, type, targetId, createdAt, attempts"
 });
 
 /* -------------------------------------------------------
@@ -27,10 +37,39 @@ export async function markDirty(table, id, changes) {
 }
 
 /* -------------------------------------------------------
+   Deletion queue helpers
+------------------------------------------------------- */
+export async function queueDeletionJob(type, targetId) {
+  // when queuing a delete
+  await dbLocal.deletionJobs.add({
+    type: 'deleteCampaign',
+    targetId: campaignId,
+    uid: auth.currentUser?.uid,
+    createdAt: Date.now(),
+    attempts: 0
+  });
+}
+
+export async function getDeletionJobs() {
+  return dbLocal.deletionJobs.toArray();
+}
+
+/* -------------------------------------------------------
+   Optional hard-delete helper to purge local tombstones
+------------------------------------------------------- */
+export async function hardDeleteLocalCampaignAndLegs(campaignId) {
+  await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
+    await dbLocal.legs.where('campaignId').equals(campaignId).delete();
+    await dbLocal.campaigns.where('id').equals(campaignId).delete();
+  });
+}
+
+/* -------------------------------------------------------
    Campaigns
 ------------------------------------------------------- */
 dbLocal.getAllCampaigns = async function () {
-  return await dbLocal.campaigns.toArray();
+  const all = await dbLocal.campaigns.toArray();
+  return all.filter(c => !c.deleted);
 };
 
 dbLocal.addCampaign = async function (campaign) {
@@ -39,6 +78,7 @@ dbLocal.addCampaign = async function (campaign) {
     id,
     updatedAt: new Date().toISOString(),
     dirty: true,
+    deleted: false,
     ...campaign
   });
   return id;
@@ -56,7 +96,8 @@ dbLocal.updateCampaign = async function (id, changes) {
    Legs
 ------------------------------------------------------- */
 dbLocal.getAllLegs = async function () {
-  return await dbLocal.legs.toArray();
+  const all = await dbLocal.legs.toArray();
+  return all.filter(l => !l.deleted);
 };
 
 dbLocal.addLeg = async function (leg) {
@@ -65,6 +106,7 @@ dbLocal.addLeg = async function (leg) {
     id,
     updatedAt: new Date().toISOString(),
     dirty: true,
+    deleted: false,
     ...leg
   });
   return id;
