@@ -43,13 +43,6 @@ export default function CampaignsTab(props) {
   const [newTicker, setNewTicker] = useState("");
   const [newNotes, setNewNotes] = useState("");
 
-  // ---------- Reload ----------
-  async function reloadAll() {
-    const { campaigns: c, legs: l } = await loadCampaignsAndLegs();
-    setCampaigns(c);
-    setLegs(l);
-  }
-
   // ---------- Add Campaign ----------
   async function onCreateCampaign() {
     if (!newTicker.trim()) return;
@@ -63,7 +56,12 @@ export default function CampaignsTab(props) {
       status: "open",
     });
 
-    await reloadAll();
+    setCampaigns([...campaigns, {
+      id,
+      ticker: newTicker.trim(),
+      notes: newNotes.trim(),
+      status: "open"
+    }]);
     setSelectedCampaignId(id);
 
     setNewTicker("");
@@ -74,7 +72,7 @@ export default function CampaignsTab(props) {
   async function onAddLeg(leg) {
     const id = crypto.randomUUID();
 
-    await updateLeg(id, {
+    const newLeg = {
       id,
       campaignId: selectedCampaignId,
       ticker: selectedCampaign.ticker,
@@ -88,22 +86,28 @@ export default function CampaignsTab(props) {
       notes: leg.notes || "",
       openDate: new Date().toISOString(),
       closeDate: null
-    });
+    };
 
-    await reloadAll();
+    // Write to Dexie + mark dirty
+    await updateLeg(id, newLeg);
+
+    await reloadAll(uid);
   }
 
   // ---------- Edit Leg ----------
   async function onSubmitEdit(updatedLeg) {
-    await updateLeg(updatedLeg.id, {
+    const normalized = {
       ...updatedLeg,
       qty: Number(updatedLeg.qty),
       openPrice: Number(updatedLeg.openPrice),
       closePrice: Number(updatedLeg.closePrice || 0)
-    });
+    };
+
+    await updateLeg(updatedLeg.id, normalized);
 
     setEditingLeg(null);
-    await reloadAll();
+
+    await reloadAll(uid);   // ⭐ best practice
   }
 
   // ---------- Roll Leg ----------
@@ -136,7 +140,7 @@ export default function CampaignsTab(props) {
     });
 
     setRollSourceLeg(null);
-    await reloadAll();
+    await reloadAll(uid);
   }
 
   // ---------- Close Campaign ----------
@@ -154,39 +158,21 @@ export default function CampaignsTab(props) {
       endDate
     });
 
-    await reloadAll();
+    await reloadAll(uid);
   }
 
   async function onDeleteCampaign() {
     if (!selectedCampaignId) return;
     if (!confirm("Delete this campaign?")) return;
 
-    // Optimistic UI remove
-    const prevCampaigns = campaigns;
-    setCampaigns(prev => prev.filter(c => c.id !== selectedCampaignId));
-    setSelectedCampaignId(null);
-
-    console.log('[UI] calling deleteCampaign', { id: selectedCampaignId });
     const res = await deleteCampaign(selectedCampaignId);
-    console.log('[UI] deleteCampaign result', res);
 
-    if (res?.queued) {
-      alert("Delete queued (will retry). See console for details.");
-    } else if (!res?.ok) {
-      const cls = res.classification || {};
-      if (cls.type === "permission") {
-        alert("Delete failed: permission denied. Check sign-in or Firestore rules.");
-      } else {
-        alert("Delete failed: " + (res.error?.message || "unknown error") + ". See console for details.");
-      }
-      // restore UI
-      setCampaigns(prevCampaigns);
-      if (prevCampaigns.length > 0) setSelectedCampaignId(prevCampaigns[0].id);
-    } else {
-      alert("Delete succeeded (remote and local).");
-      // refresh UI from DB (getAllCampaigns should filter tombstones)
-      await reloadAll();
+    if (!res?.ok && !res?.queued) {
+      alert("Delete failed");
+      return;
     }
+
+    await reloadAll(uid);
   }
 
   // ---------- Reopen Campaign ----------
@@ -196,7 +182,7 @@ export default function CampaignsTab(props) {
       endDate: null
     });
 
-    await reloadAll();
+    await reloadAll(uid);
   }
 
   // ---------- Status Badge ----------

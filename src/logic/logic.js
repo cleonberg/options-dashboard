@@ -1,4 +1,5 @@
 import dbLocal from "../db/dexie.js";
+import { pullAllFromFirestore } from "../sync.js";
 
 /* -------------------------------------------------------
    Formatting Helpers
@@ -17,11 +18,25 @@ export function cashClass(x) {
 /* -------------------------------------------------------
    Loaders
 ------------------------------------------------------- */
-export async function loadCampaignsAndLegs() {
-  const campaigns = await dbLocal.getAllCampaigns();
-  const legs = await dbLocal.getAllLegs();
+export async function loadCampaignsAndLegs(uid) {
+  console.log("[TRACE] loadCampaignsAndLegs CALLED from:", new Error().stack);
+  console.log("[TRACE] uid =", uid);
+  const campaigns = await dbLocal.campaigns.toArray();
+  const legs = await dbLocal.legs.toArray();
+
+  if (campaigns.length === 0 && legs.length === 0) {
+    console.log("Dexie empty — pulling from Firestore");
+    const remote = await pullAllFromFirestore(uid);
+
+    await dbLocal.campaigns.bulkPut(remote.campaigns);
+    await dbLocal.legs.bulkPut(remote.legs);
+
+    return remote;
+  }
+
   return { campaigns, legs };
 }
+
 
 /* -------------------------------------------------------
    Per-Leg P/L

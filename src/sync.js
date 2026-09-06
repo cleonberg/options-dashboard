@@ -6,7 +6,8 @@ import {
   getDocs,
   doc,
   setDoc,
-  serverTimestamp
+  serverTimestamp,
+  where
 } from "firebase/firestore";
 
 import { db } from "./firebase";
@@ -52,6 +53,33 @@ function safeToMillis(v) {
 function normalizeDeleted(val) {
   if (val === true || val === 1 || val === "1" || val === "true") return true;
   return false;
+}
+
+export async function pullAllFromFirestore(uid) {
+  console.log("[TRACE] pullAllFromFirestore CALLED from:", new Error().stack);
+  console.log("[TRACE] uid =", uid);
+
+  // Correct Firestore paths
+  const campaignsRef = collection(db, "users", uid, "campaigns");
+  const legsRef = collection(db, "users", uid, "legs");
+
+  const campaignsSnap = await getDocs(campaignsRef);
+  const legsSnap = await getDocs(legsRef);
+
+  const campaigns = campaignsSnap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  const legs = legsSnap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  console.log("[TRACE] remote campaigns:", campaigns.length);
+  console.log("[TRACE] remote legs:", legs.length);
+
+  return { campaigns, legs };
 }
 
 /* -------------------------
@@ -196,6 +224,11 @@ export function subscribeToLegs(uid) {
 export async function pushCampaign(uid, campaign) {
   if (!uid) {
     console.warn('[pushCampaign] no uid, skipping push', campaign?.id);
+    return;
+  }
+
+  if (!campaign || !campaign.id) {
+    console.error("Invalid campaign:", campaign);
     return;
   }
 

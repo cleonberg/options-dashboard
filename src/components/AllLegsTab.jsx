@@ -131,23 +131,17 @@ export default function AllLegsTab({ legs = [], loadCampaignsAndLegs, setLegs })
   }, [legs]);
 
   // Actions
-  async function reload() {
-    if (!loadCampaignsAndLegs) return;
-    const { legs: newLegs } = await loadCampaignsAndLegs();
-    if (setLegs) setLegs(newLegs);
-  }
-
   async function onSubmitEdit(updated) {
     await handleEditLegSubmit(updated);
     setEditingLeg(null);
-    await reload();
+    setLegs([...legs]);
   }
 
   async function onClose(leg) {
     const price = prompt("Enter close price:");
     if (!price) return;
     await handleCloseLeg(leg, price);
-    await reload();
+    setLegs([...legs]);
   }
 
   async function onRollSubmit(e) {
@@ -161,7 +155,7 @@ export default function AllLegsTab({ legs = [], loadCampaignsAndLegs, setLegs })
       openPrice: rollOpenPrice,
     });
     setRollSourceLeg(null);
-    await reload();
+    setLegs([...legs]);
   }
 
   // Small helpers
@@ -364,7 +358,7 @@ export default function AllLegsTab({ legs = [], loadCampaignsAndLegs, setLegs })
         <button className="secondary" onClick={() => setPage(pages)} disabled={page === pages}>Last</button>
 
         <div style={{ marginLeft: "auto" }}>
-          <button onClick={reload}>Reload</button>
+          <button onClick={() => reloadAll(uid)}>Reload</button>
         </div>
       </div>
 

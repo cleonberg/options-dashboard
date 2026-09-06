@@ -5,7 +5,7 @@ import DashboardTab from "./components/DashboardTab.jsx";
 import AllLegsTab from "./components/AllLegsTab.jsx";
 import CampaignsTab from "./components/CampaignsTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
-
+import { startAuth } from "./auth.js";
 
 import {
   loadCampaignsAndLegs,
@@ -35,29 +35,17 @@ export default function App() {
 
   const [dashboardSummary, setDashboardSummary] = useState(null);
 
-  // ---------- Load Data ----------
+  const [uid, setUid] = useState(null);
   useEffect(() => {
-    async function init() {
-      const { campaigns: c, legs: l } = await loadCampaignsAndLegs();
-
-      setCampaigns(c);
-      setLegs(l);
-
-      if (c.length > 0) {
-        setSelectedCampaignId(c[0].id);
-      } else {
-        setSelectedCampaignId(null);
-      }
-
-      setDashboardSummary(computeDashboardSummary(c, l));
-    }
-
-    init();
+    startAuth(async user => {
+      setUid(user.uid);
+      await reloadAll(user.uid);   // initial load
+    });
   }, []);
 
   // ---------- Reload Helper ----------
-  async function reloadAll() {
-    const { campaigns: c, legs: l } = await loadCampaignsAndLegs();
+  async function reloadAll(uid) {
+    const { campaigns: c, legs: l } = await loadCampaignsAndLegs(uid);
 
     setCampaigns(c);
     setLegs(l);
@@ -92,12 +80,8 @@ export default function App() {
           <AllLegsTab
             legs={legs}
             setLegs={setLegs}
-            loadCampaignsAndLegs={async () => {
-              const { campaigns: c, legs: l } = await loadCampaignsAndLegs();
-              setCampaigns(c);
-              setLegs(l);
-              return { campaigns: c, legs: l };
-            }}
+            reloadAll={reloadAll}   // ⭐ add this
+            uid={uid}               // ⭐ add this
           />
         );
 
@@ -124,13 +108,8 @@ export default function App() {
             setRollExpiry={setRollExpiry}
             rollOpenPrice={rollOpenPrice}
             setRollOpenPrice={setRollOpenPrice}
-            loadCampaignsAndLegs={async () => {
-              const { campaigns: c, legs: l } = await loadCampaignsAndLegs();
-              setCampaigns(c);
-              setLegs(l);
-              setDashboardSummary(computeDashboardSummary(c, l));
-              return { campaigns: c, legs: l };
-            }}
+            reloadAll={reloadAll}   // ⭐ correct
+            uid={uid}               // ⭐ needed
           />
         );
 

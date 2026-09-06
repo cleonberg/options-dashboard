@@ -1,5 +1,6 @@
 import "./firebase"; // ensure initializeApp runs first
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut } from "firebase/auth";
+import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut } from "firebase/auth";
+import { loadCampaignsAndLegs } from "./logic/logic";
 
 const auth = getAuth();
 const googleProvider = new GoogleAuthProvider();
@@ -8,13 +9,16 @@ const googleProvider = new GoogleAuthProvider();
 // googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
 export function startAuth(onReady) {
-  return onAuthStateChanged(auth, (user) => {
+  return onAuthStateChanged(auth, async (user) => {
     if (user) {
       console.log("Signed in as", user.uid, user.email);
+
+      // Fire the UI callback
       if (typeof onReady === "function") onReady(user);
+
     } else {
-      console.log("No user signed in");
-      if (typeof onReady === "function") onReady(null);
+      console.log("No user signed in, signing in anonymously…");
+      await signInAnonymously(auth);
     }
   });
 }
