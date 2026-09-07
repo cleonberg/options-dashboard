@@ -5,15 +5,6 @@ body {
   color: #f5f7ff;
 }
 
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 12px 16px;
-  border-bottom: 1px solid #24345f;
-  background: #0f2145;
-}
-
 .app-title {
   font-size: 20px;
   font-weight: 600;
@@ -59,6 +50,7 @@ main {
   padding: 12px;
   border: 1px solid #24345f;
   margin-bottom: 12px;
+  color: #f5f7ff;   /* ← THIS FIXES YOUR PAGE TITLES */
 }
 
 /* Inputs */
@@ -222,4 +214,63 @@ button.secondary {
   font-size: 12px;
   color: #9fb3ff;
   margin-bottom: 2px;
+}
+
+
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0b1b33;
+  color: white;
+  padding: 10px 16px;
+  border-bottom: 1px solid #1e2a45;
+}
+
+.header-left h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.online-dot {
+  width: 10px;
+  height: 10px;
+  background: #4caf50;
+  border-radius: 50%;
+}
+
+.user-email {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.signout-btn {
+  background: #1e2a45;
+  border: 1px solid #3a4a6a;
+  padding: 4px 10px;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.signout-btn:hover {
+  background: #2c3b5c;
+}
+
+h2,
+h3 {
+  color: white;
 }

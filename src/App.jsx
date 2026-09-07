@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 
+import Header from "./components/Header.jsx";
 import TabBar from "./components/TabBar.jsx";
 import DashboardTab from "./components/DashboardTab.jsx";
 import AllLegsTab from "./components/AllLegsTab.jsx";
@@ -123,16 +124,18 @@ export default function App() {
 
 
   return (
-    <>
-      <div className="app-header">
-        <div className="app-title">Options Dashboard</div>
-        <div className="app-subtitle">Offline + Dexie + React</div>
-      </div>
+    <div className="app-container">
+      <Header />
 
-      <div className="app-container">
-        <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
-        <main>{renderTab()}</main>
-      </div>
-    </>
+      <TabBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+      />
+
+      <main>
+        {renderTab()}
+      </main>
+    </div>
   );
+
 }
