@@ -14,7 +14,17 @@ import {
 import LegForm from "./LegForm.jsx";
 import EditLegForm from "./EditLegForm.jsx";
 
-import { updateCampaign, updateLeg, deleteCampaign } from "../logic/synclogic";
+import { 
+  closeCampaign,
+  deleteCampaign,
+  addLeg,
+  editLeg,
+  rollLeg,
+} from "../logic/logic.js";
+
+import { 
+  updateCampaign,  
+} from "../logic/synclogic";
 
 export default function CampaignsTab(props) {
   const {
@@ -37,7 +47,9 @@ export default function CampaignsTab(props) {
     rollExpiry,
     setRollExpiry,
     rollOpenPrice,
-    setRollOpenPrice
+    setRollOpenPrice,
+    reloadAll,
+    uid,
   } = props;
 
   const [newTicker, setNewTicker] = useState("");
@@ -89,90 +101,54 @@ export default function CampaignsTab(props) {
     };
 
     // Write to Dexie + mark dirty
-    await updateLeg(id, newLeg);
+    await addLeg(uid, newLeg, reloadAll);
 
     await reloadAll(uid);
   }
 
   // ---------- Edit Leg ----------
   async function onSubmitEdit(updatedLeg) {
-    const normalized = {
-      ...updatedLeg,
-      qty: Number(updatedLeg.qty),
-      openPrice: Number(updatedLeg.openPrice),
-      closePrice: Number(updatedLeg.closePrice || 0)
-    };
-
-    await updateLeg(updatedLeg.id, normalized);
-
+    await editLeg(uid, updatedLeg, reloadAll);
     setEditingLeg(null);
-
-    await reloadAll(uid);   // ⭐ best practice
   }
 
   // ---------- Roll Leg ----------
   async function onSubmitRoll(e) {
     e.preventDefault();
+    if (!rollSourceLeg) return;
 
-    // Close old leg
-    await updateLeg(rollSourceLeg.id, {
-      closePrice: Number(rollClosePrice),
-      closeDate: new Date().toISOString(),
-      isOpen: false
-    });
-
-    // Add new leg
-    const newId = crypto.randomUUID();
-    await updateLeg(newId, {
-      id: newId,
-      campaignId: rollSourceLeg.campaignId,
-      ticker: rollSourceLeg.ticker,
-      type: rollSourceLeg.type,
-      qty: Number(rollQty),
-      strike: rollStrike,
-      expiry: rollExpiry,
-      openPrice: Number(rollOpenPrice),
-      closePrice: 0,
-      isOpen: true,
-      notes: rollSourceLeg.notes,
-      openDate: new Date().toISOString(),
-      closeDate: null
-    });
+    await rollLeg(
+      uid,
+      rollSourceLeg,
+      {
+        closePrice: rollClosePrice,
+        qty: rollQty,
+        strike: rollStrike,
+        expiry: rollExpiry,
+        openPrice: rollOpenPrice
+      },
+      reloadAll
+    );
 
     setRollSourceLeg(null);
-    await reloadAll(uid);
   }
 
   // ---------- Close Campaign ----------
   async function onCloseCampaign() {
-    const closeDates = legs
-      .filter(l => l.campaignId === selectedCampaignId && l.closeDate)
-      .map(l => new Date(l.closeDate));
-
-    const endDate = closeDates.length
-      ? new Date(Math.max(...closeDates)).toISOString()
-      : new Date().toISOString();
-
-    await updateCampaign(selectedCampaignId, {
-      status: "closed",
-      endDate
-    });
-
-    await reloadAll(uid);
+    await closeCampaign(uid, selectedCampaignId, legs, reloadAll);
+    setEditingLeg(null);
   }
 
   async function onDeleteCampaign() {
     if (!selectedCampaignId) return;
     if (!confirm("Delete this campaign?")) return;
 
-    const res = await deleteCampaign(selectedCampaignId);
+    const res = await deleteCampaign(uid, selectedCampaignId, reloadAll);
 
     if (!res?.ok && !res?.queued) {
       alert("Delete failed");
       return;
     }
-
-    await reloadAll(uid);
   }
 
   // ---------- Reopen Campaign ----------

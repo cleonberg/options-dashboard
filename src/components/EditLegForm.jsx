@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { handleEditLegSubmit } from "../logic/logic.js";
+import { editLeg } from "../logic/logic.js";
 
-export default function EditLegForm({ editingLeg, setEditingLeg, onSubmitEdit }) {
+export default function EditLegForm({
+  editingLeg,
+  setEditingLeg,
+  uid,
+  reloadAll,
+  onSubmitEdit // optional
+}) {
   const [qty, setQty] = useState("");
   const [strike, setStrike] = useState("");
   const [expiry, setExpiry] = useState("");
@@ -19,11 +25,13 @@ export default function EditLegForm({ editingLeg, setEditingLeg, onSubmitEdit })
       setOpenPrice(editingLeg.openPrice);
       setClosePrice(editingLeg.closePrice || "");
       setNotes(editingLeg.notes || "");
+
       setOpenDate(
         editingLeg.openDate
           ? editingLeg.openDate.slice(0, 10)
           : new Date().toISOString().slice(0, 10)
       );
+
       setCloseDate(
         editingLeg.closeDate ? editingLeg.closeDate.slice(0, 10) : ""
       );
@@ -43,12 +51,20 @@ export default function EditLegForm({ editingLeg, setEditingLeg, onSubmitEdit })
       openPrice: Number(openPrice),
       closePrice: Number(closePrice || 0),
       notes,
-      openDate: openDate ? new Date(openDate).toISOString() : editingLeg.openDate,
-      closeDate: closeDate ? new Date(closeDate).toISOString() : editingLeg.closeDate
+      openDate: openDate
+        ? new Date(openDate).toISOString()
+        : editingLeg.openDate,
+      closeDate: closeDate
+        ? new Date(closeDate).toISOString()
+        : editingLeg.closeDate
     };
 
-    await handleEditLegSubmit(updated);
-    await onSubmitEdit(updated);
+    await editLeg(uid, updated, reloadAll);
+
+    if (onSubmitEdit) {
+      await onSubmitEdit(updated);
+    }
+
     setEditingLeg(null);
   }
 
@@ -117,6 +133,7 @@ export default function EditLegForm({ editingLeg, setEditingLeg, onSubmitEdit })
       </div>
 
       <button type="submit">Save Changes</button>
+
       <button
         type="button"
         className="secondary"

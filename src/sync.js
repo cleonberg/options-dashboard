@@ -285,6 +285,8 @@ export async function pushLeg(uid, leg) {
   const ref = doc(db, "users", uid, "legs", leg.id);
   const payload = { ...leg, updatedAt: new Date().toISOString() };
 
+  console.log("[pushLeg] writing payload:", JSON.stringify(payload, null, 2));
+
   try {
     await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true });
     await dbLocal.legs.update(leg.id, { dirty: false });

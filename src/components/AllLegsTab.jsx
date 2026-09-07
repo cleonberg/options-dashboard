@@ -4,11 +4,13 @@ import {
   fmt,
   computeLegPL,
   cashClass,
-  handleEditLegSubmit,
   handleCloseLeg,
-  handleRollSubmit,
-  handleAddLeg,
+  rollLeg,
 } from "../logic/logic.js";
+
+import { editLeg } from "../logic/logic.js";
+
+import EditLegForm from "./EditLegForm.jsx";
 
 /**
  * Props:
@@ -16,7 +18,7 @@ import {
  * - loadCampaignsAndLegs: async function to reload campaigns+legs and return { campaigns, legs }
  * - setLegs: setter to update legs in parent state (optional but recommended)
  */
-export default function AllLegsTab({ legs = [], loadCampaignsAndLegs, setLegs }) {
+export default function AllLegsTab({ legs = [], setLegs, reloadAll, uid }) {
   // UI state
   const [query, setQuery] = useState("");
   const [filterTicker, setFilterTicker] = useState("");
@@ -131,10 +133,9 @@ export default function AllLegsTab({ legs = [], loadCampaignsAndLegs, setLegs })
   }, [legs]);
 
   // Actions
-  async function onSubmitEdit(updated) {
-    await handleEditLegSubmit(updated);
+  async function onSubmitEdit(updatedLeg) {
+    await editLeg(uid, updatedLeg, reloadAll);
     setEditingLeg(null);
-    setLegs([...legs]);
   }
 
   async function onClose(leg) {
@@ -147,15 +148,21 @@ export default function AllLegsTab({ legs = [], loadCampaignsAndLegs, setLegs })
   async function onRollSubmit(e) {
     e.preventDefault();
     if (!rollSourceLeg) return;
-    await handleRollSubmit(rollSourceLeg, {
-      closePrice: rollClosePrice,
-      qty: rollQty,
-      strike: rollStrike,
-      expiry: rollExpiry,
-      openPrice: rollOpenPrice,
-    });
+
+    await rollLeg(
+      uid,
+      rollSourceLeg,
+      {
+        closePrice: rollClosePrice,
+        qty: rollQty,
+        strike: rollStrike,
+        expiry: rollExpiry,
+        openPrice: rollOpenPrice
+      },
+      reloadAll
+    );
+
     setRollSourceLeg(null);
-    setLegs([...legs]);
   }
 
   // Small helpers
@@ -375,6 +382,14 @@ export default function AllLegsTab({ legs = [], loadCampaignsAndLegs, setLegs })
             <button className="secondary" onClick={() => setEditingLeg(null)}>Cancel</button>
           </div>
         </div>
+      )}
+      {editingLeg && (
+        <EditLegForm
+          editingLeg={editingLeg}
+          setEditingLeg={setEditingLeg}
+          uid={uid}
+          reloadAll={reloadAll}
+        />
       )}
 
       {/* Roll form */}

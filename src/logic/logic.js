@@ -1,5 +1,7 @@
 import dbLocal from "../db/dexie.js";
 import { pullAllFromFirestore } from "../sync.js";
+import { pushLeg } from '../sync.js';
+import { pushTombstone } from "../sync/pushTombstone";
 
 /* -------------------------------------------------------
    Formatting Helpers
@@ -103,21 +105,44 @@ export function computeCampaignPLSeries(legs) {
 /* -------------------------------------------------------
    Leg Handlers
 ------------------------------------------------------- */
-export async function handleAddLeg(leg) {
-  await dbLocal.addLeg({
-    ...leg,
-    openDate: leg.openDate || new Date().toISOString(),
-    closeDate: leg.closeDate || null
-  });
-}
-
-export async function handleEditLegSubmit(leg) {
-  await dbLocal.updateLeg(leg.id, {
+export async function addLeg(uid, leg, reloadAll) {
+  const normalized = {
     ...leg,
     qty: Number(leg.qty),
     openPrice: Number(leg.openPrice),
-    closePrice: Number(leg.closePrice || 0)
-  });
+    closePrice: Number(leg.closePrice || 0),
+    updatedAt: new Date().toISOString(),
+    dirty: true
+  };
+
+  // Dexie insert
+  await dbLocal.legs.put(normalized);
+
+  // Firestore insert/upsert
+  await pushLeg(uid, normalized);
+
+  // Refresh UI
+  if (reloadAll) {
+    await reloadAll(uid);
+  }
+
+  return normalized;
+}
+
+export async function editLeg(uid, updatedLeg, reloadAll) {
+  const normalized = {
+    ...updatedLeg,
+    qty: Number(updatedLeg.qty),
+    openPrice: Number(updatedLeg.openPrice),
+    closePrice: Number(updatedLeg.closePrice || 0)
+  };
+
+  await dbLocal.updateLeg(updatedLeg.id, normalized);
+  await pushLeg(uid, normalized);
+
+  await reloadAll(uid);   // now reloadAll is passed in
+
+  return normalized;
 }
 
 export async function handleCloseLeg(leg, closePrice) {
@@ -128,35 +153,40 @@ export async function handleCloseLeg(leg, closePrice) {
   });
 }
 
-export async function handleRollSubmit(sourceLeg, roll) {
+export async function rollLeg(uid, oldLeg, rollData, reloadAll) {
   // Close old leg
-  await dbLocal.updateLeg(sourceLeg.id, {
-    closePrice: Number(roll.closePrice),
+  await editLeg(uid, {
+    ...oldLeg,
+    closePrice: Number(rollData.closePrice),
     closeDate: new Date().toISOString(),
     isOpen: false
-  });
+  }, reloadAll);
 
-  // Add new leg
-  await dbLocal.addLeg({
-    campaignId: sourceLeg.campaignId,
-    ticker: sourceLeg.ticker,
-    type: sourceLeg.type,
-    qty: Number(roll.qty),
-    strike: roll.strike,
-    expiry: roll.expiry,
-    openPrice: Number(roll.openPrice),
+  // Create new leg
+  const newLeg = {
+    id: crypto.randomUUID(),
+    campaignId: oldLeg.campaignId,
+    ticker: oldLeg.ticker,
+    type: oldLeg.type,
+    qty: Number(rollData.qty),
+    strike: rollData.strike,
+    expiry: rollData.expiry,
+    openPrice: Number(rollData.openPrice),
     closePrice: 0,
     isOpen: true,
-    notes: sourceLeg.notes,
+    notes: oldLeg.notes,
     openDate: new Date().toISOString(),
-    closeDate: null
-  });
+    closeDate: null,
+    linkedLegIds: [oldLeg.id]
+  };
+
+  await addLeg(uid, newLeg, reloadAll);
 }
 
 /* -------------------------------------------------------
    Campaign Handlers
 ------------------------------------------------------- */
-export async function handleCloseCampaign(campaignId, legs) {
+export async function closeCampaign(uid, campaignId, legs, reloadAll) {
   const closeDates = legs
     .filter(l => l.campaignId === campaignId && l.closeDate)
     .map(l => new Date(l.closeDate));
@@ -165,10 +195,23 @@ export async function handleCloseCampaign(campaignId, legs) {
     ? new Date(Math.max(...closeDates)).toISOString()
     : new Date().toISOString();
 
+  // Dexie update
   await dbLocal.updateCampaign(campaignId, {
+    status: "closed",
+    endDate,
+    dirty: true,
+    updatedAt: new Date().toISOString()
+  });
+
+  // Firestore update
+  await pushCampaign(uid, {
+    id: campaignId,
     status: "closed",
     endDate
   });
+
+  // Reload Dexie → React
+  await reloadAll(uid);
 }
 
 export async function handleReopenCampaign(campaignId) {
@@ -176,6 +219,60 @@ export async function handleReopenCampaign(campaignId) {
     status: "open",
     endDate: null
   });
+}
+
+export async function deleteCampaign(uid, id, reloadAll) {
+  const now = new Date().toISOString();
+
+  // Tombstone locally
+  await dbLocal.campaigns.update(id, {
+    deleted: true,
+    deletedAt: now,
+    dirty: true,
+    updatedAt: now
+  });
+
+  await dbLocal.legs.where('campaignId').equals(id).modify(leg => {
+    leg.deleted = true;
+    leg.deletedAt = now;
+    leg.dirty = true;
+    leg.updatedAt = now;
+  });
+
+  try {
+    if (uid) {
+      await pushTombstone(uid, 'campaigns', id);
+
+      const legs = await dbLocal.legs.where('campaignId').equals(id).toArray();
+      await Promise.all(
+        legs.map(l => pushTombstone(uid, 'legs', l.id))
+      );
+    }
+
+    // ⭐ optional but recommended
+    if (reloadAll) {
+      await reloadAll(uid);
+    }
+
+    return { ok: true };
+
+  } catch (err) {
+    console.error("[deleteCampaign] hard failure", err);
+    const cls = err._classification || { type: 'unknown', transient: false };
+
+    if (cls.transient) {
+      await dbLocal.deletionJobs.add({
+        type: 'deleteCampaign',
+        targetId: id,
+        createdAt: Date.now(),
+        attempts: 0
+      });
+
+      return { ok: false, queued: true, error: err, classification: cls };
+    }
+
+    return { ok: false, queued: false, error: err, classification: cls };
+  }
 }
 
 export async function handleSplitCampaign(campaignId, legs, campaigns, n) {
