@@ -54,4 +54,4 @@ export async function signOutUser() {
   }
 }
 
-export { auth };
+export { auth, googleProvider };
