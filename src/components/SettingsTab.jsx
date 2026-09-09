@@ -1,14 +1,77 @@
 import React, { useRef } from "react";
 import dbLocal from "../db/dexie";
 import GoogleSignIn from "./GoogleSignIn.jsx";
-import { forceSync, initialSync } from "../sync";
+import { forceSync, initialSync, deleteAllRemote, loadCampaignsAndLegs } from "../sync/sync";
 import { auth } from "../auth";
+import { buildImportData } from "../logic/importCSV.js";
 
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
 
+  function normalizeRow(row) {
+    return {
+      Ticker: row.Ticker,
+      Type: row.Type,
+      Quantity: row.Quantity,
+      Strike: row.Strike,
+      VerticalStrike: row["Vertical Strike"],
+      Expiration: row.Expiration,
+      OpenDate: row["Open Date"],
+      OpenPrice: row["Open Price"],
+      CloseDate: row["Close Date"],
+      ClosePrice: row["Close Price"],
+      RolledTo: row["Rolled To"],
+      RolledFrom: row["Rolled From"],
+      ID: row.ID,
+      CurrentTheta: row["Current Theta"]
+    };
+  }
+
+  function parseCsv(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const headers = lines[0].split(",");
+
+    return lines.slice(1).map(line => {
+      const cols = line.split(",");
+      const raw = {};
+      headers.forEach((h, i) => raw[h.trim()] = (cols[i] || "").trim());
+      return normalizeRow(raw);
+    });
+  }
+
+  async function handleCsvImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const text = await file.text();
+
+    // Convert TSV → row objects
+    const rows = parseCsv(text);
+
+    // Build campaigns + legs using your roll-chain logic
+    const { campaigns, legs } = buildImportData(rows);
+
+    console.log("Parsed rows:", rows.length);
+    console.log("First row:", rows[0]);
+    console.log("Import result:", { campaigns: campaigns.length, legs: legs.length });
+
+    if (!window.confirm("Importing CSV will overwrite existing data. Continue?")) {
+      return;
+    }
+
+    await dbLocal.campaigns.clear();
+    await dbLocal.legs.clear();
+
+    await dbLocal.campaigns.bulkPut(campaigns);
+    await dbLocal.legs.bulkPut(legs);
+
+    alert("CSV import complete. Reloading…");
+    if (reloadAll) await reloadAll();
+  }
+
+
   // ---------- Reset DB ----------
- async function handleReset() {
+  async function handleReset() {
     if (!window.confirm("Reset ALL local data? This cannot be undone.")) return;
 
     const uid = auth.currentUser?.uid;
@@ -26,6 +89,38 @@ export default function SettingsTab({ reloadAll }) {
     }
 
     if (reloadAll) await reloadAll();
+  }
+
+  async function handleDeleteAll() {
+    if (!window.confirm("Delete ALL campaigns and legs from LOCAL and FIRESTORE?")) {
+      return;
+    }
+
+    const typed = window.prompt(
+      "This action is permanent.\n\nType DELETE to confirm."
+    );
+
+    if (typed !== "DELETE") {
+      alert("Deletion cancelled.");
+      return;
+    }
+
+    // Delete local Dexie
+    await dbLocal.campaigns.clear();
+    await dbLocal.legs.clear();
+
+    // Delete remote Firestore
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      await deleteAllRemote(uid);
+    } else {
+      alert("Warning: Not signed in — remote delete skipped.");
+    }
+
+    alert("All campaigns and legs deleted.");
+
+    // Reload local-only
+    await loadCampaignsAndLegs(uid, { localOnly: true });
   }
 
   // ---------- Export DB ----------
@@ -102,7 +197,6 @@ export default function SettingsTab({ reloadAll }) {
 
       {/* ---------- Import ---------- */}
       <div className="settings-section-title">Restore</div>
-
       <div className="settings-row">
         <input
           type="file"
@@ -110,6 +204,16 @@ export default function SettingsTab({ reloadAll }) {
           ref={fileInputRef}
           accept=".json"
           onChange={handleImport}
+        />
+      </div>
+
+      <div className="settings-section-title">Import CSV</div>
+      <div className="settings-row">
+        <input
+          type="file"
+          className="input"
+          accept=".csv,.txt"
+          onChange={handleCsvImport}
         />
       </div>
 
@@ -121,6 +225,13 @@ export default function SettingsTab({ reloadAll }) {
           Force Sync Now
         </button>
       </div>
+
+      <button
+        style={{ backgroundColor: "#d9534f", color: "white", marginTop: "1rem" }}
+        onClick={handleDeleteAll}
+      >
+        Delete ALL Campaigns & Legs (Local + Server)
+      </button>
 
     </div>
   );

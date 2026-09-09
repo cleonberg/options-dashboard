@@ -8,10 +8,9 @@ import CampaignsTab from "./components/CampaignsTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
 import { startAuth } from "./auth.js";
 
-import {
-  loadCampaignsAndLegs,
-  computeDashboardSummary,
-} from "./logic/logic.js";
+import { computeDashboardSummary } from "./logic/logic.js";
+
+import { loadCampaignsAndLegs } from "./sync/sync.js";
 
 import dbLocal from "./db/dexie.js";
 import "./styles/styles.css";
@@ -36,6 +35,10 @@ export default function App() {
 
   const [dashboardSummary, setDashboardSummary] = useState(null);
 
+  const [syncStatus, setSyncStatus] = useState("synced"); 
+  const [lastSync, setLastSync] = useState(null);
+  const [dirtyCount, setDirtyCount] = useState(0);
+
   const [uid, setUid] = useState(null);
   useEffect(() => {
     startAuth(async user => {
@@ -44,8 +47,19 @@ export default function App() {
     });
   }, []);
 
+  async function syncNow() {
+    setSyncStatus("syncing");
+
+    await reloadAll(uid);
+
+    setSyncStatus("synced");
+  }
+
+
   // ---------- Reload Helper ----------
   async function reloadAll(uid) {
+    setSyncStatus("syncing");
+
     const { campaigns: c, legs: l } = await loadCampaignsAndLegs(uid);
 
     setCampaigns(c);
@@ -58,8 +72,14 @@ export default function App() {
       setSelectedCampaignId(null);
     }
 
+    // Count dirty Dexie rows
+    const dirty = await dbLocal.legs.filter(leg => leg.dirty === true).count();
+    setDirtyCount(dirty);
+
     // Compute dashboard summary
     setDashboardSummary(computeDashboardSummary(c, l));
+    setSyncStatus("synced");
+    setLastSync(new Date());
   }
 
   // ---------- Render Tabs ----------
@@ -122,10 +142,18 @@ export default function App() {
     }
   }
 
+  window.dbLocal = dbLocal;
+
+
 
   return (
     <div className="app-container">
-      <Header />
+      <Header
+        syncStatus={syncStatus}
+        lastSync={lastSync}
+        dirtyCount={dirtyCount}
+        syncNow={syncNow}
+      />
 
       <TabBar
         activeTab={activeTab}

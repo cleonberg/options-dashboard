@@ -16,12 +16,12 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
   }
 
   async function submit(e) {
+    e.preventDefault();
+
     if (!qty || !strike || !expiry || !openPrice) {
       alert("Please complete all fields before adding a leg.");
       return;
     }
-
-    e.preventDefault();
 
     const leg = {
       campaignId: selectedCampaign.id,
@@ -31,15 +31,19 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
       strike,
       expiry,
       openPrice: Number(openPrice),
-      closePrice: 0,
+
+      // ⭐ FIX: new legs should NOT be closed
+      closePrice: null,
+      closeDate: null,
       isOpen: true,
+
       notes,
-      openDate: openDate ? new Date(openDate).toISOString() : new Date().toISOString(),
-      closeDate: null
+      openDate: new Date(openDate).toISOString()
     };
 
     await onAddLeg(leg);
 
+    // Reset form
     setQty("");
     setStrike("");
     setExpiry("");

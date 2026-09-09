@@ -1,6 +1,5 @@
 import "./firebase"; // ensure initializeApp runs first
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut } from "firebase/auth";
-import { loadCampaignsAndLegs } from "./logic/logic";
 
 const auth = getAuth();
 const googleProvider = new GoogleAuthProvider();

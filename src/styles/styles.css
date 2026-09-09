@@ -274,3 +274,92 @@ h2,
 h3 {
   color: white;
 }
+
+
+.dropdown-section {
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #24345f;
+  font-size: 12px;
+  color: #9fb3ff;
+}
+
+.dropdown-label {
+  font-weight: 600;
+  color: #cfd8ff;
+  margin-bottom: 4px;
+}
+
+
+.sync-btn {
+  background: #3b5bd8;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.dirty-count {
+  color: #f5f7ff;
+  font-weight: 600;
+}
+
+.last-sync {
+  opacity: 0.7;
+}
+
+.user-dropdown {
+  position: relative;
+}
+
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.user-trigger:hover {
+  background: #1e2a45;
+}
+
+.caret {
+  opacity: 0.7;
+}
+
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: 32px;
+  background: #0f2145;
+  border: 1px solid #24345f;
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+  z-index: 10;
+}
+
+.dropdown-menu button {
+  background: #182a52;
+  border: 1px solid #24345f;
+  padding: 6px 10px;
+  color: #cfd8ff;
+  text-align: left;
+}
+
+.dropdown-menu button:hover {
+  background: #2c3b5c;
+}
+
+.dropdown-email {
+  font-size: 12px;
+  color: #9fb3ff;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #24345f;
+  margin-bottom: 4px;
+}
+

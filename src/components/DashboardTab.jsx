@@ -1,10 +1,9 @@
 // DashboardTab.jsx
 import React from "react";
 import "../styles/summary-table.css";
-import { fmt, fmtCampaignDaysLeft } from "../logic/logic.js";
+import { fmt, fmtCampaignDaysLeft, computeCampaignSummary, cashClass } from "../logic/logic.js";
 
 import DeletedCampaigns from "../components/DeletedCampaigns";
-// import { reopenCampaign } from "../sync/reopenCampaign"; // optional if you call inline
 
 export default function DashboardTab({
   summary,
@@ -12,7 +11,7 @@ export default function DashboardTab({
   legs,
   setSelectedCampaignId,
   setActiveTab,
-  reloadAll // optional: pass a function that refreshes main UI state
+  reloadAll
 }) {
   if (!summary) {
     return <div className="card">Loading…</div>;
@@ -20,7 +19,7 @@ export default function DashboardTab({
 
   function handleSelect(id) {
     setSelectedCampaignId(id);
-    setActiveTab("campaigns");   // jump straight to your existing CampaignsTab
+    setActiveTab("campaigns");
   }
 
   const open = campaigns.filter(c => c.status === "open");
@@ -84,23 +83,33 @@ export default function DashboardTab({
         <summary>Closed Campaigns</summary>
         <CampaignTable
           campaigns={sortByDays(closed)}
+          legs={legs}
           onSelect={handleSelect}
         />
       </details>
 
-      {/* --- Deleted campaigns section at the bottom --- */}
+      {/* --- Deleted campaigns section --- */}
       <section
         className="deleted-campaigns-section"
-        style={{ marginTop: 24, borderTop: "1px solid #e6e6e6", paddingTop: 16, background: "#fafafa" }}
+        style={{
+          marginTop: 24,
+          borderTop: "1px solid #e6e6e6",
+          paddingTop: 16,
+          background: "#fafafa"
+        }}
       >
         <h4 style={{ marginTop: 0 }}>Deleted campaigns</h4>
-        <p style={{ marginTop: 0, marginBottom: 12, color: "#666", fontSize: 13 }}>
+        <p style={{
+          marginTop: 0,
+          marginBottom: 12,
+          color: "#666",
+          fontSize: 13
+        }}>
           Deleted campaigns are local tombstones. Click Undelete to restore and push to the server.
         </p>
 
         <DeletedCampaigns
           onRestored={async (id) => {
-            // refresh main UI if parent provided reloadAll
             if (typeof reloadAll === "function") {
               try {
                 await reloadAll();
@@ -108,7 +117,6 @@ export default function DashboardTab({
                 console.warn("reloadAll failed after restore", err);
               }
             }
-            // optionally select restored campaign and jump to Campaigns tab
             if (typeof setSelectedCampaignId === "function") {
               setSelectedCampaignId(id);
               setActiveTab("campaigns");
@@ -127,15 +135,27 @@ function CampaignTable({ campaigns, legs, onSelect }) {
         <tr>
           <th>Ticker</th>
           <th>Days Left</th>
+          <th>Total P/L</th> {/* ⭐ NEW COLUMN */}
         </tr>
       </thead>
+
       <tbody>
-        {campaigns.map(c => (
-          <tr key={c.id} onClick={() => onSelect(c.id)}>
-            <td>{c.ticker}</td>
-            <td>{fmtCampaignDaysLeft(c, legs)}</td>
-          </tr>
-        ))}
+        {campaigns.map(c => {
+          const legsForCampaign = legs.filter(l => l.campaignId === c.id);
+          const summary = computeCampaignSummary(c, legsForCampaign);
+
+          return (
+            <tr key={c.id} onClick={() => onSelect(c.id)}>
+              <td>{c.ticker}</td>
+              <td>{fmtCampaignDaysLeft(c, legs)}</td>
+
+              {/* ⭐ NEW TOTAL PL CELL */}
+              <td className={cashClass(summary.totalPL)}>
+                {fmt(summary.totalPL)}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

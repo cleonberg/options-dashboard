@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { editLeg } from "../logic/logic.js";
+import { editLeg } from "../sync/sync.js";
 
 export default function EditLegForm({
   editingLeg,
