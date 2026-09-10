@@ -135,7 +135,7 @@ function CampaignTable({ campaigns, legs, onSelect }) {
         <tr>
           <th>Ticker</th>
           <th>Days Left</th>
-          <th>Total P/L</th> {/* ⭐ NEW COLUMN */}
+          <th>Total P/L</th>
         </tr>
       </thead>
 

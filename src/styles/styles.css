@@ -363,3 +363,64 @@ h3 {
   margin-bottom: 4px;
 }
 
+
+/* Leg List Styles */
+/* Leg List Styles */
+.leg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Outer container */
+.leg-row {
+  border: 1px solid #24345f;
+  border-radius: 8px;
+  background: #111f3f;     /* ← MATCHES .card */
+  color: #f5f7ff;          /* ← LIGHT TEXT */
+}
+
+/* Collapsed summary row */
+.leg-summary {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+/* Hover effect */
+.leg-summary:hover {
+  background: #16254a;     /* same as .table tr:hover */
+}
+
+/* Expanded details */
+.leg-details {
+  padding: 12px;
+  border-top: 1px solid #24345f;
+  background: #0f2145;     /* slightly darker */
+}
+
+/* Detail rows */
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.detail-row label {
+  font-weight: bold;
+  color: #9fb3ff;          /* same as table headers */
+}
+
+/* Inputs */
+.detail-row input,
+.detail-row textarea {
+  width: 60%;
+  background: #0b1b3a;
+  border: 1px solid #24345f;
+  color: #f5f7ff;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
