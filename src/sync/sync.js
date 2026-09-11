@@ -215,6 +215,7 @@ export async function createCampaign(uid, fields) {
   const campaign = normalizeCampaign({
     id,
     uid,
+    status: "open", // 👈 ADD THIS LINE
     ...fields,
     openDate: fields.openDate ?? now,
     updatedAt: now,
@@ -275,11 +276,19 @@ export async function updateCampaign(uid, id, fields) {
 }
 
 export async function closeCampaign(uid, id) {
-  await updateCampaign(uid, id, { closed: true });
+  await updateCampaign(uid, id, { 
+    status: "closed", 
+    closed: true,
+    endDate: new Date().toISOString().slice(0, 10) // ✨ Stamps today's date!
+  });
 }
 
 export async function reopenCampaign(uid, id) {
-  await updateCampaign(uid, id, { closed: false });
+  await updateCampaign(uid, id, { 
+    status: "open", 
+    closed: false,
+    endDate: "" // ✨ Clears the end date
+  });
 }
 
 export async function deleteCampaign(uid, id) {
@@ -314,8 +323,10 @@ export async function addLeg(uid, legFields) {
   const leg = normalizeLeg({
     id,
     uid,
+    isOpen: true,  // ✨ ADDED: Ensure new legs default to open
+    closed: false, // ✨ ADDED: Ensure new legs default to open
     ...legFields,
-    openDate: legFields.openDate ?? now,
+    openDate: legFields?.openDate ?? now,
     updatedAt: now,
     deleted: false,
     dirty: true,
@@ -372,14 +383,22 @@ export async function editLeg(uid, leg) {
 export async function closeLeg(uid, leg, closePrice) {
   const now = Date.now();
 
-  const updated = {
+  // ✨ SAFELY handle closePrice: 
+  // If called from the UI without a price, keep whatever they already typed in the input box.
+  let finalClosePrice = leg.closePrice; 
+  if (closePrice !== undefined && closePrice !== null) {
+    finalClosePrice = Number(closePrice);
+  }
+
+  const updated = normalizeLeg({
     ...leg,
-    closePrice: Number(closePrice),
-    closeDate: now,
-    isOpen: false,
+    closePrice: finalClosePrice, 
+    closeDate: leg.closeDate || now, // Use existing close date if they set one, otherwise now
+    closed: true,  
+    isOpen: false, 
     updatedAt: now,
     dirty: true,
-  };
+  });
 
   await dbLocal.legs.put(updated);
 
@@ -400,16 +419,46 @@ export async function closeLeg(uid, leg, closePrice) {
   return updated;
 }
 
-export async function rollLeg(uid, sourceLeg, rollFields) {
+export async function deleteLeg(uid, id) {
+  const existing = await dbLocal.legs.get(id);
+  if (!existing) return;
+
+  // 1. Create a tombstone record to mark it as deleted locally
+  const tombstone = {
+    ...existing,
+    deleted: true,
+    dirty: true,
+    updatedAt: nowMillis(),
+  };
+
+  await dbLocal.legs.put(tombstone);
+
+  // 2. Push the delete to Firestore
+  try {
+    await pushDelete(uid, "legs", id);
+    // 3. If successful, mark it as clean locally
+    await dbLocal.legs.update(id, { dirty: false });
+    console.log(`[deleteLeg] Successfully deleted leg ${id}`);
+  } catch (err) {
+    console.error("[deleteLeg] remote delete failed", err);
+  }
+}
+
+// ✨ ADDED = {}: defaults to empty object so the app doesn't crash if rollFields is missing
+export async function rollLeg(uid, sourceLeg, rollFields = {}) { 
   // close old leg
   await editLeg(uid, {
     ...sourceLeg,
     closed: true,
+    isOpen: false, // ✨ ADDED: Ensure UI knows this leg is closed!
     closeDate: rollFields.closeDate ?? nowMillis(),
   });
 
   // create new leg
   await addLeg(uid, {
+    ticker: sourceLeg.ticker, // ✨ Helpful defaults: carry over base info to the new leg
+    type: sourceLeg.type,     
+    qty: sourceLeg.qty,       
     ...rollFields,
     campaignId: sourceLeg.campaignId,
   });

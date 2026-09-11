@@ -25,14 +25,23 @@ export default function EditLegForm({
       setClosePrice(editingLeg.closePrice || "");
       setNotes(editingLeg.notes || "");
 
+      // Safely handle both Strings and Unix Timestamp Numbers
+      const formatForInput = (dateVal) => {
+        if (!dateVal) return "";
+        const d = new Date(dateVal);
+        return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+      };
+
       setOpenDate(
-        editingLeg.openDate
-          ? editingLeg.openDate.slice(0, 10)
+        editingLeg.openDate 
+          ? formatForInput(editingLeg.openDate) 
           : new Date().toISOString().slice(0, 10)
       );
 
       setCloseDate(
-        editingLeg.closeDate ? editingLeg.closeDate.slice(0, 10) : ""
+        editingLeg.closeDate 
+          ? formatForInput(editingLeg.closeDate) 
+          : ""
       );
     }
   }, [editingLeg]);

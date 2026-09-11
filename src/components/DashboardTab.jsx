@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from "react";
 import { fmt, cashClass, computeCampaignSummary } from "../logic/logic.js";
+import { createCampaign } from "../sync/sync.js";
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
 import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
 import PerformanceChart from "./PerformanceChart.jsx";
 
-export default function DashboardTab({ campaigns, legs, summary, onSelectCampaign }) {
+export default function DashboardTab({ uid, campaigns = [], legs = [], summary, onSelectCampaign }) {
   const [searchTerm, setSearchTerm] = useState("");
 
   // Filter campaigns by search term
@@ -19,7 +20,7 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
 
   // Dynamic summary calculation
   const displaySummary = useMemo(() => {
-    if (!searchTerm.trim()) return summary;
+    if (!searchTerm.trim()) return summary || { netCredit: 0, openLegCount: 0, closedLegCount: 0, activeCampaigns: 0, closedCampaigns: 0 };
 
     const filteredIds = new Set(filteredCampaigns.map(c => c.id));
     const filteredLegs = legs.filter(l => filteredIds.has(l.campaignId));
@@ -29,9 +30,6 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
       return acc + (computeCampaignSummary(c, cLegs).totalPL || 0);
     }, 0);
 
-    const startDates = filteredCampaigns.map(c => c.startDate).filter(Boolean).sort();
-    const endDates = filteredCampaigns.map(c => c.endDate).filter(Boolean).sort();
-
     return {
       netCredit: totalPL,
       openLegCount: filteredLegs.filter(l => l.isOpen).length,
@@ -40,6 +38,11 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
       closedCampaigns: closed.length,
     };
   }, [searchTerm, summary, filteredCampaigns, legs, open.length, closed.length]);
+
+  // Initial loading fallback
+  if (!summary && campaigns.length === 0) {
+    return <div className="card">Loading dashboard…</div>;
+  }
 
   return (
     <div className="dashboard-tab">
@@ -56,7 +59,9 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
             border: "1px solid #24345f",
             background: "#111f3f",
             color: "#fff",
-            width: "250px"
+            width: "100%",
+            maxWidth: "250px",
+            boxSizing: "border-box"
           }}
         />
       </div>
@@ -71,8 +76,8 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
           {/* Card 1: Net Credit */}
           <div className="summary-card">
             <div className="summary-card-title">Total Net Credit</div>
-            <div className={`${cashClass(displaySummary.netCredit)} summary-card-value`}>
-              {fmt(displaySummary.netCredit)}
+            <div className={`${cashClass(displaySummary?.netCredit)} summary-card-value`}>
+              {fmt(displaySummary?.netCredit || 0)}
             </div>
           </div>
 
@@ -82,12 +87,12 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
             <div className="summary-card-metrics">
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Open Campaigns</div>
-                <div className="summary-metric-val">{displaySummary.activeCampaigns}</div>
+                <div className="summary-metric-val">{displaySummary?.activeCampaigns || 0}</div>
               </div>
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Open Legs</div>
-                <div className="summary-metric-val">{displaySummary.openLegCount}</div>
+                <div className="summary-metric-val">{displaySummary?.openLegCount || 0}</div>
               </div>
             </div>
           </div>
@@ -98,12 +103,12 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
             <div className="summary-card-metrics">
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Closed Campaigns</div>
-                <div className="summary-metric-val">{displaySummary.closedCampaigns}</div>
+                <div className="summary-metric-val">{displaySummary?.closedCampaigns || 0}</div>
               </div>
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Closed Legs</div>
-                <div className="summary-metric-val">{displaySummary.closedLegCount}</div>
+                <div className="summary-metric-val">{displaySummary?.closedLegCount || 0}</div>
               </div>
             </div>
           </div>
@@ -116,7 +121,7 @@ export default function DashboardTab({ campaigns, legs, summary, onSelectCampaig
       {/* Open Campaigns */}
       <section style={{ marginBottom: "24px" }}>
         <h3 style={{ color: "#9fb3ff" }}>Active Campaigns ({open.length})</h3>
-        <OpenCampaignTable campaigns={open} legs={legs} onSelect={onSelectCampaign} />
+        <OpenCampaignTable campaigns={open} legs={legs} onSelect={onSelectCampaign} onAddCampaign={(newCampaignData) => {createCampaign(uid, newCampaignData);}}/>
       </section>
 
       {/* Closed Campaigns */}

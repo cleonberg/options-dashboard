@@ -1,5 +1,4 @@
-// CampaignsTab.jsx
-import React, { useState } from "react"; // <-- Added useState
+import React, { useState } from "react";
 
 import {
   fmt,
@@ -7,19 +6,18 @@ import {
   computeCampaignSummary,
 } from "../logic/logic.js";
 
-import CampaignForm from "./CampaignForm.jsx"; // <-- Import the new form
+import CampaignForm from "./CampaignForm.jsx";
 import LegForm from "./LegForm.jsx";
 import LegTable from "./LegTable.jsx";
+import PerformanceChart from "./PerformanceChart.jsx";
 
 import { 
   closeCampaign,
   deleteCampaign,
   addLeg,
   updateCampaign,
+  reopenCampaign,
 } from "../sync/sync.js";
-
-import { reopenCampaign } from "../sync/reopenCampaign.js";
-
 
 export default function CampaignsTab(props) {
   const {
@@ -30,11 +28,10 @@ export default function CampaignsTab(props) {
     uid,
   } = props;
 
-  // <-- Track if the edit form is visible
   const [showEditForm, setShowEditForm] = useState(false); 
-  
-  // <-- NEW: Track if the success message should be visible
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const [isAddingLeg, setIsAddingLeg] = useState(false);
 
   // -----------------------------
   // Find selected campaign + legs
@@ -47,14 +44,20 @@ export default function CampaignsTab(props) {
   // -----------------------------
   if (!selectedCampaign) {
     return (
-      <div className="card">
-        <h3>No campaign selected.</h3>
-        <p>Choose one from the dashboard.</p>
+      <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
+        <h3 style={{ color: "#9fb3ff" }}>No campaign selected.</h3>
+        <p>Choose one from the dashboard to view details.</p>
       </div>
     );
   }
 
+  // -----------------------------
+  // Computed Data
+  // -----------------------------
   const summary = computeCampaignSummary(selectedCampaign, legsForCampaign);
+  const isOpen = !selectedCampaign.endDate;
+  const openLegsCount = legsForCampaign.filter(l => l.isOpen).length;
+  const closedLegsCount = legsForCampaign.filter(l => !l.isOpen).length;
 
   // -----------------------------
   // Handlers
@@ -65,13 +68,8 @@ export default function CampaignsTab(props) {
       return;
     }
     
-    // Call sync to update Dexie & Firestore
     await updateCampaign(uid, selectedCampaign.id, updatedData);
-    
-    // Hide the form upon success
     setShowEditForm(false);
-
-    // <-- NEW: Show the success message for 3 seconds
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
@@ -83,63 +81,164 @@ export default function CampaignsTab(props) {
   // -----------------------------
   return (
     <div className="campaigns-tab">
-
-      <div className="card">
-        <header className="campaign-header">
-          <h2>
-            {selectedCampaign.ticker} — opened {selectedCampaign.startDate}
+      
+      {/* --- HEADER CARD --- */}
+      <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <h2 style={{ margin: "0 0 8px 0", display: "flex", alignItems: "center", gap: "12px" }}>
+            {selectedCampaign.ticker} Campaign
+            <span style={{ 
+              fontSize: "12px", 
+              padding: "4px 8px", 
+              borderRadius: "12px", 
+              backgroundColor: isOpen ? "#1e4620" : "#3b3b3b", 
+              color: isOpen ? "#4ade80" : "#a1a1aa",
+              border: `1px solid ${isOpen ? "#4ade80" : "#a1a1aa"}`
+            }}>
+              {isOpen ? "OPEN" : "CLOSED"}
+            </span>
           </h2>
-          <div>Status: {selectedCampaign.endDate ? "Closed" : "Open"}</div>
-        </header>
+          <div style={{ fontSize: "13px", color: "#9fb3ff" }}>
+            Opened: {selectedCampaign.startDate} {selectedCampaign.endDate ? ` | Closed: ${selectedCampaign.endDate}` : ""}
+          </div>
+        </div>
 
-        <section className="button-group">
-          {/* <-- Added Edit button */}
+        <div className="button-group" style={{ display: "flex", gap: "8px" }}>
           <button onClick={() => setShowEditForm(!showEditForm)}>
             {showEditForm ? "Cancel Edit" : "Edit"}
           </button>
           
-          <button onClick={() => closeCampaign(uid, selectedCampaign.id)}>Close</button>
-          <button onClick={() => reopenCampaign(uid, selectedCampaign.id)}>Reopen</button>
-          <button onClick={() => {
-            deleteCampaign(uid, selectedCampaign.id);
-            setSelectedCampaignId(null); // Send user back to dashboard on delete
-          }}>Delete</button>
-        </section>
+          {isOpen ? (
+            <button 
+              onClick={async () => {
+                await closeCampaign(uid, selectedCampaign.id);
+                setSelectedCampaignId(null); // ✨ This instantly sends them back to Dashboard!
+              }}
+            >
+              Close
+            </button>
+          ) : (
+            <button 
+              onClick={async () => {
+                await reopenCampaign(uid, selectedCampaign.id);
+              }}
+            >
+              Reopen
+            </button>
+          )}
+          
+          <button 
+            style={{ backgroundColor: "#5f2424", borderColor: "#8c3636", color: "#ff9f9f" }}
+            onClick={() => {
+              if (window.confirm("Are you sure you want to delete this campaign?")) {
+                deleteCampaign(uid, selectedCampaign.id);
+                setSelectedCampaignId(null); 
+              }
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
 
-        {/* <-- NEW: Conditionally render the success message */}
-        {saveSuccess && (
-          <div style={{ 
-            marginTop: "12px", 
-            padding: "8px 12px", 
-            backgroundColor: "#d4edda", 
-            color: "#155724", 
-            borderRadius: "4px",
-            border: "1px solid #c3e6cb",
-            display: "inline-block"
-          }}>
-            ✅ Campaign saved!
-          </div>
-        )}
+      {/* --- SUCCESS MESSAGE & EDIT FORM --- */}
+      {saveSuccess && (
+        <div style={{ 
+          marginBottom: "16px", 
+          padding: "12px 16px", 
+          backgroundColor: "#1e4620", 
+          color: "#4ade80", 
+          borderRadius: "8px",
+          border: "1px solid #4ade80",
+          fontWeight: "bold"
+        }}>
+          ✅ Campaign saved successfully!
+        </div>
+      )}
 
-        {/* <-- Conditionally render the Edit Form here */}
-        {showEditForm && (
+      {showEditForm && (
+        <div className="card" style={{ border: "1px solid #4ade80" }}>
           <CampaignForm 
             initialData={selectedCampaign} 
             onSubmit={handleEditCampaign} 
             onCancel={() => setShowEditForm(false)} 
           />
-        )}
+        </div>
+      )}
+
+      {/* --- 3-CARD SUMMARY METRICS --- */}
+      <div className="summary-grid-cards">
+        {/* Card 1: Total P/L */}
+        <div className="summary-card">
+          <div className="summary-card-title">Total P/L</div>
+          <div className={`${cashClass(summary.totalPL)} summary-card-value`} style={{ fontSize: "24px" }}>
+            {fmt(summary.totalPL)}
+          </div>
+        </div>
+
+        {/* Card 2: Net Credit/Debit */}
+        <div className="summary-card">
+          <div className="summary-card-title">Net Credit</div>
+          <div className={`${cashClass(summary.netCredit)} summary-card-value`}>
+            {fmt(summary.netCredit)}
+          </div>
+        </div>
+
+        {/* Card 3: Leg Status */}
+        <div className="summary-card">
+          <div className="summary-card-title">Legs Summary</div>
+          <div className="summary-card-metrics">
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Open</div>
+              <div className="summary-metric-val">{openLegsCount}</div>
+            </div>
+            <div className="summary-card-divider" />
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Closed</div>
+              <div className="summary-metric-val">{closedLegsCount}</div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <section className="campaign-summary">
-        {/* You can add className={cashClass(summary.totalPL)} here if you want color */}
-        <div>Total PL: {fmt(summary.totalPL)}</div>
-        <div>Net Credit: {fmt(summary.netCredit)}</div>
-      </section>
+      {/* --- PERFORMANCE CHART --- */}
+      <PerformanceChart closedCampaigns={[selectedCampaign]} legs={legsForCampaign} />
 
-      <section className="campaign-legs">
-        <h3>Legs</h3>
+      {/* --- LEGS SECTION --- */}
+      <div className="card">
+        
+        {/* Header & Toggle Button (Now at the top) */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <h3 style={{ color: "#9fb3ff", margin: 0 }}>Campaign Legs</h3>
+          <button 
+            onClick={() => setIsAddingLeg(!isAddingLeg)}
+            style={{ 
+              backgroundColor: isAddingLeg ? "transparent" : "#3182ce",
+              border: isAddingLeg ? "1px solid #9fb3ff" : "none",
+              color: isAddingLeg ? "#9fb3ff" : "#fff"
+            }}
+          >
+            {isAddingLeg ? "Cancel" : "+ Add Leg"}
+          </button>
+        </div>
 
+        {/* Animated Expandable Wrapper (Now directly below the header) */}
+        <div className={`add-leg-wrapper ${isAddingLeg ? "open" : ""}`}>
+          <div className="add-leg-content">
+            {/* Added paddingBottom so it separates cleanly from the table when open */}
+            <div style={{ paddingBottom: "24px" }}>
+              <LegForm
+                selectedCampaign={selectedCampaign}
+                onAddLeg={legFields => {
+                  addLeg(uid, { ...legFields, campaignId: selectedCampaign.id });
+                  setIsAddingLeg(false);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+        
+        {/* The Table (Now underneath the expandable form) */}
         <LegTable
           legs={legsForCampaign}
           campaigns={campaigns}
@@ -150,13 +249,7 @@ export default function CampaignsTab(props) {
           enableCampaignColumn={false}
         />
 
-        <LegForm
-          selectedCampaign={selectedCampaign}
-          onAddLeg={legFields =>
-            addLeg(uid, { ...legFields, campaignId: selectedCampaign.id })
-          }
-        />
-      </section>
+      </div>
 
     </div>
   );

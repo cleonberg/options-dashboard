@@ -106,6 +106,11 @@ export default function App() {
     setLastSync(new Date());
   }
 
+  const handleSelectCampaign = (id) => {
+    setSelectedCampaignId(id);
+    setActiveTab("campaigns"); // Or "detail" depending on your tab name
+  };  
+
   // ---------- Render Tabs ----------
   function renderTab() {
     switch (activeTab) {
@@ -116,8 +121,7 @@ export default function App() {
             summary={dashboardSummary}
             campaigns={campaigns}
             legs={legs}
-            setSelectedCampaignId={setSelectedCampaignId}
-            setActiveTab={setActiveTab}
+            onSelectCampaign={handleSelectCampaign}
           />
         );
 

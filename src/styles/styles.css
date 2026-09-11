@@ -534,6 +534,19 @@ button.secondary:hover {
   font-weight: 600;
 }
 
+/* Stack cards vertically on mobile screens (iPhones / smartphones) */
+@media (max-width: 768px) {
+  .summary-grid-cards {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .summary-card {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
 .summary-card-value {
   font-size: 20px;
   font-weight: bold;
@@ -623,4 +636,21 @@ button.secondary:hover {
   display: flex;
   gap: 8px; /* adjust spacing as needed */
   align-items: center;
+}
+
+/* Wrapper that handles the actual animation */
+.add-leg-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease-in-out;
+}
+
+/* Modifier class applied when the toggle is true */
+.add-leg-wrapper.open {
+  grid-template-rows: 1fr;
+}
+
+/* Inner container to hide overflowing content while collapsed */
+.add-leg-content {
+  overflow: hidden;
 }
