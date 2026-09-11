@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { fmt, cashClass, computeLegPL } from "../logic/logic.js";
 import { editLeg, closeLeg, rollLeg } from "../sync/sync.js";
 
@@ -13,7 +13,6 @@ export default function LegRow({ leg, uid, reloadAll }) {
 
   function update(field, value) {
     editLeg(uid, { ...leg, [field]: value });
-    // reloadAll(uid);
   }
 
   return (
@@ -89,21 +88,39 @@ export default function LegRow({ leg, uid, reloadAll }) {
   );
 }
 
+// --- Upgraded EditableField ---
 function EditableField({ label, value, type = "text", onChange }) {
+  // 1. Hold the current typing value in local state
+  const [localValue, setLocalValue] = useState(value ?? "");
+
+  // 2. If the database updates externally (sync, roll, etc.), sync the input box
+  useEffect(() => {
+    setLocalValue(value ?? "");
+  }, [value]);
+
+  // 3. Only send the update to Dexie/Firestore if the user actually changed it
+  function handleBlur() {
+    if (localValue !== (value ?? "")) {
+      onChange(localValue);
+    }
+  }
+
   return (
     <div className="detail-row">
       <label>{label}</label>
 
       {type === "textarea" ? (
         <textarea
-          defaultValue={value}
-          onBlur={e => onChange(e.target.value)}
+          value={localValue}
+          onChange={e => setLocalValue(e.target.value)}
+          onBlur={handleBlur}
         />
       ) : (
         <input
           type={type}
-          defaultValue={value}
-          onBlur={e => onChange(e.target.value)}
+          value={localValue}
+          onChange={e => setLocalValue(e.target.value)}
+          onBlur={handleBlur}
         />
       )}
     </div>

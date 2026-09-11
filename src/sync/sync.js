@@ -7,6 +7,7 @@ import {
   doc,
   setDoc,
   serverTimestamp,
+  writeBatch,
   deleteDoc
 } from "firebase/firestore";
 
@@ -130,14 +131,19 @@ export function subscribeToCampaigns(uid) {
   const qCampaigns = query(collection(db, "users", uid, "campaigns"));
 
   return onSnapshot(qCampaigns, async snap => {
-    const dirtyIds = new Set(
-      (await dbLocal.campaigns.where("dirty").equals(1).toArray()).map(c => c.id)
-    );
-
     for (const docSnap of snap.docs) {
       const id = docSnap.id;
-      if (dirtyIds.has(id)) continue;
+      
+      // 1. Get the absolute latest local state
+      const localRecord = await dbLocal.campaigns.get(id);
 
+      // 2. The Golden Rule: Never overwrite a local dirty record
+      if (localRecord && localRecord.dirty) {
+        console.log(`[Sync] Skipping overwrite of campaign ${id}, local edits pending.`);
+        continue; 
+      }
+
+      // 3. Safe to overwrite
       const data = normalizeCampaign({ id, ...docSnap.data() });
       await dbLocal.campaigns.put(data);
     }
@@ -148,54 +154,54 @@ export function subscribeToLegs(uid) {
   const qLegs = query(collection(db, "users", uid, "legs"));
 
   return onSnapshot(qLegs, async snap => {
-    const dirtyIds = new Set(
-      (await dbLocal.legs.where("dirty").equals(1).toArray()).map(l => l.id)
-    );
-
     for (const docSnap of snap.docs) {
       const id = docSnap.id;
-      if (dirtyIds.has(id)) continue;
+      
+      // 1. Get the absolute latest local state
+      const localRecord = await dbLocal.legs.get(id);
 
+      // 2. The Golden Rule: Never overwrite a local dirty record
+      if (localRecord && localRecord.dirty) {
+        console.log(`[Sync] Skipping overwrite of leg ${id}, local edits pending.`);
+        continue;
+      }
+
+      // 3. Safe to overwrite
       const data = normalizeLeg({ id, ...docSnap.data() });
       await dbLocal.legs.put(data);
     }
   });
 }
 
-export async function loadCampaignsAndLegs(uid, { localOnly = false } = {}) {
-  console.log("[TRACE] loadCampaignsAndLegs CALLED");
-  console.log("[TRACE] uid =", uid);
+export async function ensureInitialSync(uid) {
+  if (!uid) return;
 
-  // Always load Dexie first
-  let campaigns = await dbLocal.campaigns.toArray();
-  let legs = await dbLocal.legs.toArray();
+  // We only need to count the rows, not load them into memory
+  const campaignCount = await dbLocal.campaigns.count();
+  const legCount = await dbLocal.legs.count();
 
-  // Local-only mode → return Dexie immediately
-  if (localOnly) {
-    console.log("[TRACE] localOnly mode — returning Dexie only");
-    return { campaigns, legs };
+  // If Dexie is completely empty, run the initial pull from Firestore
+  if (campaignCount === 0 && legCount === 0) {
+    console.log("[TRACE] Dexie empty — running initialSync");
+    await initialSync(uid);
+  } else {
+    console.log("[TRACE] Dexie already has data — skipping initial pull");
   }
+}
 
-  // Dexie has data → return it
-  if (campaigns.length > 0 || legs.length > 0) {
-    console.log("[TRACE] Dexie has data — using local copy");
-    return { campaigns, legs };
-  }
+export function startBackgroundSync(uid) {
+  if (!uid) return () => {};
 
-  // Dexie empty → run initialSync
-  if (!uid) {
-    console.warn("[WARN] Dexie empty but uid missing — returning empty");
-    return { campaigns: [], legs: [] };
-  }
+  console.log("[TRACE] Starting background Firebase sync listeners...");
+  
+  const unsubscribeCampaigns = subscribeToCampaigns(uid);
+  const unsubscribeLegs = subscribeToLegs(uid);
 
-  console.log("[TRACE] Dexie empty — running initialSync");
-  await initialSync(uid);
-
-  // Reload Dexie after initialSync
-  campaigns = await dbLocal.campaigns.toArray();
-  legs = await dbLocal.legs.toArray();
-
-  return { campaigns, legs };
+  // Return a cleanup function so React can shut off the listeners on logout
+  return () => {
+    unsubscribeCampaigns();
+    unsubscribeLegs();
+  };
 }
 
 /* -----------------------
@@ -354,6 +360,10 @@ export async function editLeg(uid, leg) {
       }
     );
     await dbLocal.legs.update(updated.id, { dirty: false });
+    
+    // 👇 Add this so you know it worked instantly!
+    console.log(`[editLeg] Successfully saved and synced leg ${updated.id}`);
+    
   } catch (err) {
     console.error("[editLeg] push failed", err);
   }
@@ -410,8 +420,8 @@ export async function rollLeg(uid, sourceLeg, rollFields) {
 ------------------------ */
 
 export async function forceSync(uid) {
-  const dirtyCampaigns = await dbLocal.campaigns.where("dirty").equals(1).toArray();
-  const dirtyLegs = await dbLocal.legs.where("dirty").equals(1).toArray();
+  const dirtyCampaigns = await dbLocal.campaigns.filter(campaign => campaign.dirty === true).toArray();
+  const dirtyLegs = await dbLocal.legs.filter(leg => leg.dirty === true).toArray();
 
   for (const c of dirtyCampaigns) {
     const latest = await dbLocal.campaigns.get(c.id);
@@ -435,19 +445,35 @@ export async function forceSync(uid) {
 /* -----------------------
    Delete all remote (utility)
 ------------------------ */
-
 export async function deleteAllRemote(uid) {
-  const campaignsSnap = await getDocs(
-    collection(db, "users", uid, "campaigns")
-  );
-  for (const d of campaignsSnap.docs) {
-    await deleteDoc(d.ref);
-  }
+  // Define the collections you need to wipe out
+  const collectionsToClear = [
+    `users/${uid}/campaigns`,
+    `users/${uid}/legs`
+  ];
 
-  const legsSnap = await getDocs(
-    collection(db, "users", uid, "legs")
-  );
-  for (const d of legsSnap.docs) {
-    await deleteDoc(d.ref);
+  for (const collectionPath of collectionsToClear) {
+    const ref = collection(db, collectionPath);
+    const snapshot = await getDocs(ref);
+
+    let batch = writeBatch(db);
+    let operationCount = 0;
+
+    for (const docSnapshot of snapshot.docs) {
+      batch.delete(docSnapshot.ref);
+      operationCount++;
+
+      // Firestore limit is 500. We commit at 400 to be perfectly safe.
+      if (operationCount === 400) {
+        await batch.commit();
+        batch = writeBatch(db); // start a fresh batch
+        operationCount = 0;
+      }
+    }
+
+    // Commit any remaining deletes in the final batch
+    if (operationCount > 0) {
+      await batch.commit();
+    }
   }
 }

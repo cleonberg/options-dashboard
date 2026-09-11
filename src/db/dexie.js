@@ -4,15 +4,11 @@ import Dexie from "dexie";
 if (!globalThis.__dbLocal) {
   const db = new Dexie("optionsDashboard");
 
-  db.version(1).stores({
-    campaigns: "id, updatedAt, dirty",
-    legs: "id, campaignId, updatedAt, dirty"
-  });
-
-  db.version(2).stores({
-    campaigns: "id, updatedAt, dirty, deleted",
-    legs: "id, campaignId, updatedAt, dirty, deleted",
-    deletionJobs: "++id, type, targetId, createdAt, attempts"
+  db.version(3).stores({
+    campaigns: "id, updatedAt, dirty, deleted, clientUpdatedAt, serverUpdatedAt",
+    legs: "id, campaignId, updatedAt, dirty, deleted, clientUpdatedAt, serverUpdatedAt",
+    deletionJobs: "++id, uid, type, targetId, createdAt, attempts, nextAttemptAt, lastError",
+    meta: "key"
   });
 
   db.on('populate', () => {

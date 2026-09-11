@@ -1,9 +1,11 @@
 // DashboardTab.jsx
-import React from "react";
+import React, { useState } from "react";
 import "../styles/summary-table.css";
 import { fmt, fmtCampaignDaysLeft, computeCampaignSummary, cashClass } from "../logic/logic.js";
+import { createCampaign } from "../sync/sync.js"; // <-- Import your sync function
 
 import DeletedCampaigns from "../components/DeletedCampaigns";
+import CampaignForm from "./CampaignForm"; // <-- Import the new form
 
 export default function DashboardTab({
   summary,
@@ -11,8 +13,11 @@ export default function DashboardTab({
   legs,
   setSelectedCampaignId,
   setActiveTab,
-  reloadAll
+  reloadAll,
+  uid // <-- Make sure this is being passed from App.js!
 }) {
+  const [showAddForm, setShowAddForm] = useState(false); // <-- Track form visibility
+
   if (!summary) {
     return <div className="card">Loading…</div>;
   }
@@ -20,6 +25,28 @@ export default function DashboardTab({
   function handleSelect(id) {
     setSelectedCampaignId(id);
     setActiveTab("campaigns");
+  }
+
+  async function handleCreateCampaign(data) {
+    if (!uid) {
+      alert("Error: User ID not found.");
+      return;
+    }
+    
+    // Add the missing status property before saving!
+    const campaignData = {
+      ...data,
+      status: "open" 
+    };
+
+    // Save to database
+    await createCampaign(uid, campaignData);
+    
+    // Close form and optionally reload
+    setShowAddForm(false);
+    // if (typeof reloadAll === "function") {
+    //   await reloadAll();
+    // }
   }
 
   const open = campaigns.filter(c => c.status === "open");
@@ -32,9 +59,28 @@ export default function DashboardTab({
 
   return (
     <div className="card">
-      <h3>Dashboard Summary</h3>
+      {/* Header with New Campaign button */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h3 style={{ margin: 0 }}>Dashboard Summary</h3>
+        {!showAddForm && (
+          <button 
+            onClick={() => setShowAddForm(true)}
+            style={{ padding: "6px 12px", cursor: "pointer" }}
+          >
+            + New Campaign
+          </button>
+        )}
+      </div>
 
-      <div className="summary-grid">
+      {/* The new form conditionally renders here */}
+      {showAddForm && (
+        <CampaignForm 
+          onSubmit={handleCreateCampaign} 
+          onCancel={() => setShowAddForm(false)} 
+        />
+      )}
+
+      <div className="summary-grid" style={{ marginTop: "16px" }}>
         <div>
           <div className="summary-label">Total Net Credit</div>
           <div>{fmt(summary.netCredit)}</div>
@@ -149,7 +195,6 @@ function CampaignTable({ campaigns, legs, onSelect }) {
               <td>{c.ticker}</td>
               <td>{fmtCampaignDaysLeft(c, legs)}</td>
 
-              {/* ⭐ NEW TOTAL PL CELL */}
               <td className={cashClass(summary.totalPL)}>
                 {fmt(summary.totalPL)}
               </td>

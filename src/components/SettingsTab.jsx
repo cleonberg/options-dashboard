@@ -1,9 +1,9 @@
 import React, { useRef } from "react";
 import dbLocal from "../db/dexie";
 import GoogleSignIn from "./GoogleSignIn.jsx";
-import { forceSync, initialSync, deleteAllRemote, loadCampaignsAndLegs } from "../sync/sync";
+import { forceSync, initialSync, deleteAllRemote } from "../sync/sync";
 import { auth } from "../auth";
-import { buildImportData } from "../logic/importCSV.js";
+import { buildImportData } from "../logic/importCsv.js";
 
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
@@ -44,31 +44,39 @@ export default function SettingsTab({ reloadAll }) {
     if (!file) return;
 
     const text = await file.text();
-
-    // Convert TSV → row objects
     const rows = parseCsv(text);
-
-    // Build campaigns + legs using your roll-chain logic
     const { campaigns, legs } = buildImportData(rows);
 
-    console.log("Parsed rows:", rows.length);
-    console.log("First row:", rows[0]);
-    console.log("Import result:", { campaigns: campaigns.length, legs: legs.length });
-
-    if (!window.confirm("Importing CSV will overwrite existing data. Continue?")) {
+    if (!window.confirm("Importing CSV will overwrite existing local data. Continue?")) {
       return;
     }
 
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
 
-    await dbLocal.campaigns.bulkPut(campaigns);
-    await dbLocal.legs.bulkPut(legs);
+    const now = new Date().toISOString();
 
-    alert("CSV import complete. Reloading…");
-    if (reloadAll) await reloadAll();
+    // Attach required offline-first metadata for Firestore sync
+    const campaignsToInsert = campaigns.map(c => ({
+      ...c,
+      dirty: true,
+      deleted: false,
+      updatedAt: now
+    }));
+
+    const legsToInsert = legs.map(l => ({
+      ...l,
+      dirty: true,
+      deleted: false,
+      updatedAt: now
+    }));
+
+    await dbLocal.campaigns.bulkPut(campaignsToInsert);
+    await dbLocal.legs.bulkPut(legsToInsert);
+
+    alert("CSV import complete. Syncing to Firestore...");
+    // No reloadAll() needed! Dexie's on('changes') will update the UI instantly.
   }
-
 
   // ---------- Reset DB ----------
   async function handleReset() {
@@ -76,19 +84,13 @@ export default function SettingsTab({ reloadAll }) {
 
     const uid = auth.currentUser?.uid;
 
-    // Clear local DB
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
-
-    // No need to modify after clear — nothing to modify.
-    // If you intended to clear dirty flags on remaining rows, do that before clear.
 
     // Force a fresh pull from server
     if (uid) {
       await initialSync(uid);
     }
-
-    if (reloadAll) await reloadAll();
   }
 
   async function handleDeleteAll() {
@@ -105,11 +107,11 @@ export default function SettingsTab({ reloadAll }) {
       return;
     }
 
-    // Delete local Dexie
+    // 1. Wipe local database
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
 
-    // Delete remote Firestore
+    // 2. Wipe remote database
     const uid = auth.currentUser?.uid;
     if (uid) {
       await deleteAllRemote(uid);
@@ -117,10 +119,15 @@ export default function SettingsTab({ reloadAll }) {
       alert("Warning: Not signed in — remote delete skipped.");
     }
 
-    alert("All campaigns and legs deleted.");
+    // 3. ⭐ FORCE THE APP TO RE-RENDER OVER THE EMPTY DATABASE
+    if (typeof reloadAll === "function") {
+      await reloadAll();
+    } else {
+      // If reloadAll isn't in scope here, you might need to pass it in
+      // or directly set your state: setCampaigns([]); setLegs([]);
+    }
 
-    // Reload local-only
-    await loadCampaignsAndLegs(uid, { localOnly: true });
+    alert("All campaigns and legs deleted.");
   }
 
   // ---------- Export DB ----------
@@ -156,22 +163,28 @@ export default function SettingsTab({ reloadAll }) {
       return;
     }
 
-    if (!window.confirm("Importing will overwrite existing data. Continue?")) {
+    if (!window.confirm("Importing will overwrite existing local data. Continue?")) {
       return;
     }
 
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
 
+    const now = new Date().toISOString();
+
+    // Use .put() to preserve original IDs instead of addCampaign/addLeg
     if (Array.isArray(data.campaigns)) {
-      for (const c of data.campaigns) await dbLocal.addCampaign(c);
+      for (const c of data.campaigns) {
+        await dbLocal.campaigns.put({ ...c, dirty: true, updatedAt: c.updatedAt || now });
+      }
     }
     if (Array.isArray(data.legs)) {
-      for (const l of data.legs) await dbLocal.addLeg(l);
+      for (const l of data.legs) {
+        await dbLocal.legs.put({ ...l, dirty: true, updatedAt: l.updatedAt || now });
+      }
     }
 
-    alert("Import complete. Reloading…");
-    if (reloadAll) await reloadAll();
+    alert("Import complete. Syncing to Firestore...");
   }
 
   return (
@@ -220,7 +233,7 @@ export default function SettingsTab({ reloadAll }) {
       <div className="settings-row">
         <button
           className="secondary"
-          onClick={() => forceSync(auth.currentUser.uid)}
+          onClick={() => forceSync(auth.currentUser?.uid)}
         >
           Force Sync Now
         </button>

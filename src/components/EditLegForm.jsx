@@ -5,7 +5,6 @@ export default function EditLegForm({
   editingLeg,
   setEditingLeg,
   uid,
-  reloadAll,
   onSubmitEdit // optional
 }) {
   const [qty, setQty] = useState("");
@@ -59,12 +58,15 @@ export default function EditLegForm({
         : editingLeg.closeDate
     };
 
-    await editLeg(uid, updated, reloadAll);
+    // ✨ reloadAll is completely gone from this call.
+    // editLeg updates Dexie -> useLiveQuery instantly updates the UI!
+    await editLeg(uid, updated);
 
     if (onSubmitEdit) {
       await onSubmitEdit(updated);
     }
 
+    // Closes the form smoothly without blowing away the parent row state
     setEditingLeg(null);
   }
 
