@@ -350,3 +350,49 @@ export function fmtCampaignDaysLeft(campaign, legs) {
 
   return Math.ceil((soonest - today) / 86400000);
 }
+
+// Auto-detect Option Strategy from active legs
+export function detectStrategy(legs) {
+  if (!legs || legs.length === 0) return "Custom";
+
+  let activeLegs = legs.filter(l => l.isOpen);
+  if (activeLegs.length === 0) {
+    const initialLegs = legs.filter(l => !l.rolledFrom);
+    activeLegs = initialLegs.length > 0 ? initialLegs : [legs[0]];
+  }
+
+  const types = activeLegs.map(l => (l.type || "").toLowerCase().trim());
+  const sellPuts = types.filter(t => t === "sell_put" || t === "short_put").length;
+  const buyPuts = types.filter(t => t === "buy_put" || t === "long_put").length;
+  const sellCalls = types.filter(t => t === "sell_call" || t === "short_call").length;
+  const buyCalls = types.filter(t => t === "buy_call" || t === "long_call").length;
+  const stocks = types.filter(t => t === "stock").length;
+
+  const totalActive = activeLegs.length;
+
+  if (totalActive === 1) {
+    if (sellPuts === 1) return "Short Put";
+    if (buyPuts === 1) return "Long Put";
+    if (sellCalls === 1) return "Short Call";
+    if (buyCalls === 1) return "Long Call";
+    if (stocks === 1) return "Stock";
+    return "Single Leg";
+  }
+
+  if (totalActive === 2) {
+    if (sellPuts === 1 && buyPuts === 1) return "Put Vertical";
+    if (sellCalls === 1 && buyCalls === 1) return "Call Vertical";
+    if (sellPuts === 1 && sellCalls === 1) return "Short Strangle";
+    if (buyPuts === 1 && buyCalls === 1) return "Long Strangle";
+    if (stocks === 1 && sellCalls === 1) return "Covered Call";
+    return "2-Leg Spread";
+  }
+
+  if (totalActive === 4) {
+    if (sellPuts === 1 && buyPuts === 1 && sellCalls === 1 && buyCalls === 1) {
+      return "Iron Condor";
+    }
+  }
+
+  return `${totalActive}-Leg Position`;
+}

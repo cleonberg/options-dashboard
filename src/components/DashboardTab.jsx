@@ -1,207 +1,129 @@
-// DashboardTab.jsx
-import React, { useState } from "react";
-import "../styles/summary-table.css";
-import { fmt, fmtCampaignDaysLeft, computeCampaignSummary, cashClass } from "../logic/logic.js";
-import { createCampaign } from "../sync/sync.js"; // <-- Import your sync function
+import React, { useState, useMemo } from "react";
+import { fmt, cashClass, computeCampaignSummary } from "../logic/logic.js";
+import OpenCampaignTable from "./OpenCampaignTable.jsx";
+import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
+import PerformanceChart from "./PerformanceChart.jsx";
 
-import DeletedCampaigns from "../components/DeletedCampaigns";
-import CampaignForm from "./CampaignForm"; // <-- Import the new form
+export default function DashboardTab({ campaigns, legs, summary, onSelectCampaign }) {
+  const [searchTerm, setSearchTerm] = useState("");
 
-export default function DashboardTab({
-  summary,
-  campaigns,
-  legs,
-  setSelectedCampaignId,
-  setActiveTab,
-  reloadAll,
-  uid // <-- Make sure this is being passed from App.js!
-}) {
-  const [showAddForm, setShowAddForm] = useState(false); // <-- Track form visibility
+  // Filter campaigns by search term
+  const filteredCampaigns = useMemo(() => {
+    if (!searchTerm.trim()) return campaigns;
+    const term = searchTerm.toLowerCase().trim();
+    return campaigns.filter(c => c.ticker?.toLowerCase().includes(term));
+  }, [campaigns, searchTerm]);
 
-  if (!summary) {
-    return <div className="card">Loading…</div>;
-  }
+  const open = useMemo(() => filteredCampaigns.filter(c => c.status === "open"), [filteredCampaigns]);
+  const closed = useMemo(() => filteredCampaigns.filter(c => c.status === "closed"), [filteredCampaigns]);
 
-  function handleSelect(id) {
-    setSelectedCampaignId(id);
-    setActiveTab("campaigns");
-  }
+  // Dynamic summary calculation
+  const displaySummary = useMemo(() => {
+    if (!searchTerm.trim()) return summary;
 
-  async function handleCreateCampaign(data) {
-    if (!uid) {
-      alert("Error: User ID not found.");
-      return;
-    }
-    
-    // Add the missing status property before saving!
-    const campaignData = {
-      ...data,
-      status: "open" 
+    const filteredIds = new Set(filteredCampaigns.map(c => c.id));
+    const filteredLegs = legs.filter(l => filteredIds.has(l.campaignId));
+
+    const totalPL = filteredCampaigns.reduce((acc, c) => {
+      const cLegs = legs.filter(l => l.campaignId === c.id);
+      return acc + (computeCampaignSummary(c, cLegs).totalPL || 0);
+    }, 0);
+
+    const startDates = filteredCampaigns.map(c => c.startDate).filter(Boolean).sort();
+    const endDates = filteredCampaigns.map(c => c.endDate).filter(Boolean).sort();
+
+    return {
+      netCredit: totalPL,
+      openLegCount: filteredLegs.filter(l => l.isOpen).length,
+      closedLegCount: filteredLegs.filter(l => !l.isOpen).length,
+      activeCampaigns: open.length,
+      closedCampaigns: closed.length,
     };
-
-    // Save to database
-    await createCampaign(uid, campaignData);
-    
-    // Close form and optionally reload
-    setShowAddForm(false);
-    // if (typeof reloadAll === "function") {
-    //   await reloadAll();
-    // }
-  }
-
-  const open = campaigns.filter(c => c.status === "open");
-  const closed = campaigns.filter(c => c.status === "closed");
-
-  const sortByDays = list =>
-    [...list].sort(
-      (a, b) => fmtCampaignDaysLeft(a, legs) - fmtCampaignDaysLeft(b, legs)
-    );
+  }, [searchTerm, summary, filteredCampaigns, legs, open.length, closed.length]);
 
   return (
-    <div className="card">
-      {/* Header with New Campaign button */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0 }}>Dashboard Summary</h3>
-        {!showAddForm && (
-          <button 
-            onClick={() => setShowAddForm(true)}
-            style={{ padding: "6px 12px", cursor: "pointer" }}
-          >
-            + New Campaign
-          </button>
-        )}
-      </div>
-
-      {/* The new form conditionally renders here */}
-      {showAddForm && (
-        <CampaignForm 
-          onSubmit={handleCreateCampaign} 
-          onCancel={() => setShowAddForm(false)} 
-        />
-      )}
-
-      <div className="summary-grid" style={{ marginTop: "16px" }}>
-        <div>
-          <div className="summary-label">Total Net Credit</div>
-          <div>{fmt(summary.netCredit)}</div>
-        </div>
-
-        <div>
-          <div className="summary-label">Open Legs</div>
-          <div>{summary.openLegCount}</div>
-        </div>
-
-        <div>
-          <div className="summary-label">Closed Legs</div>
-          <div>{summary.closedLegCount}</div>
-        </div>
-
-        <div>
-          <div className="summary-label">Active Campaigns</div>
-          <div>{summary.activeCampaigns}</div>
-        </div>
-
-        <div>
-          <div className="summary-label">Closed Campaigns</div>
-          <div>{summary.closedCampaigns}</div>
-        </div>
-
-        <div>
-          <div className="summary-label">Earliest Open</div>
-          <div>{summary.earliestOpen || "-"}</div>
-        </div>
-
-        <div>
-          <div className="summary-label">Latest Close</div>
-          <div>{summary.latestClose || "-"}</div>
-        </div>
-      </div>
-
-      {/* --- Campaign Summary Table --- */}
-      <h3 style={{ marginTop: "24px" }}>Open Campaigns</h3>
-      <CampaignTable
-        campaigns={sortByDays(open)}
-        legs={legs}
-        onSelect={handleSelect}
-      />
-
-      <details style={{ marginTop: "16px" }}>
-        <summary>Closed Campaigns</summary>
-        <CampaignTable
-          campaigns={sortByDays(closed)}
-          legs={legs}
-          onSelect={handleSelect}
-        />
-      </details>
-
-      {/* --- Deleted campaigns section --- */}
-      <section
-        className="deleted-campaigns-section"
-        style={{
-          marginTop: 24,
-          borderTop: "1px solid #e6e6e6",
-          paddingTop: 16,
-          background: "#fafafa"
-        }}
-      >
-        <h4 style={{ marginTop: 0 }}>Deleted campaigns</h4>
-        <p style={{
-          marginTop: 0,
-          marginBottom: 12,
-          color: "#666",
-          fontSize: 13
-        }}>
-          Deleted campaigns are local tombstones. Click Undelete to restore and push to the server.
-        </p>
-
-        <DeletedCampaigns
-          onRestored={async (id) => {
-            if (typeof reloadAll === "function") {
-              try {
-                await reloadAll();
-              } catch (err) {
-                console.warn("reloadAll failed after restore", err);
-              }
-            }
-            if (typeof setSelectedCampaignId === "function") {
-              setSelectedCampaignId(id);
-              setActiveTab("campaigns");
-            }
+    <div className="dashboard-tab">
+      {/* Search Input */}
+      <div style={{ marginBottom: "16px" }}>
+        <input
+          type="text"
+          placeholder="Filter by ticker..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{
+            padding: "8px 12px",
+            borderRadius: "6px",
+            border: "1px solid #24345f",
+            background: "#111f3f",
+            color: "#fff",
+            width: "250px"
           }}
         />
+      </div>
+
+      {/* Top Metrics Grid */}
+      <div style={{ marginBottom: "24px" }}>
+        <div style={{ fontSize: "12px", color: "#9fb3ff", marginBottom: "8px", fontWeight: "bold" }}>
+          {searchTerm ? `Metrics filtered by "${searchTerm.toUpperCase()}":` : "All Campaigns Metrics:"}
+        </div>
+
+        <div className="summary-grid-cards">
+          {/* Card 1: Net Credit */}
+          <div className="summary-card">
+            <div className="summary-card-title">Total Net Credit</div>
+            <div className={`${cashClass(displaySummary.netCredit)} summary-card-value`}>
+              {fmt(displaySummary.netCredit)}
+            </div>
+          </div>
+
+          {/* Card 2: Active Summary */}
+          <div className="summary-card">
+            <div className="summary-card-title">Active Summary</div>
+            <div className="summary-card-metrics">
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">Open Campaigns</div>
+                <div className="summary-metric-val">{displaySummary.activeCampaigns}</div>
+              </div>
+              <div className="summary-card-divider" />
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">Open Legs</div>
+                <div className="summary-metric-val">{displaySummary.openLegCount}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Closed Summary */}
+          <div className="summary-card">
+            <div className="summary-card-title">Closed Summary</div>
+            <div className="summary-card-metrics">
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">Closed Campaigns</div>
+                <div className="summary-metric-val">{displaySummary.closedCampaigns}</div>
+              </div>
+              <div className="summary-card-divider" />
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">Closed Legs</div>
+                <div className="summary-metric-val">{displaySummary.closedLegCount}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Standalone Performance Chart */}
+      <PerformanceChart closedCampaigns={closed} legs={legs} />
+
+      {/* Open Campaigns */}
+      <section style={{ marginBottom: "24px" }}>
+        <h3 style={{ color: "#9fb3ff" }}>Active Campaigns ({open.length})</h3>
+        <OpenCampaignTable campaigns={open} legs={legs} onSelect={onSelectCampaign} />
+      </section>
+
+      {/* Closed Campaigns */}
+      <section>
+        <h3 style={{ color: "#9fb3ff" }}>Closed Campaigns ({closed.length})</h3>
+        <ClosedCampaignTable campaigns={closed} legs={legs} onSelect={onSelectCampaign} />
       </section>
     </div>
-  );
-}
-
-function CampaignTable({ campaigns, legs, onSelect }) {
-  return (
-    <table className="summary-table">
-      <thead>
-        <tr>
-          <th>Ticker</th>
-          <th>Days Left</th>
-          <th>Total P/L</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {campaigns.map(c => {
-          const legsForCampaign = legs.filter(l => l.campaignId === c.id);
-          const summary = computeCampaignSummary(c, legsForCampaign);
-
-          return (
-            <tr key={c.id} onClick={() => onSelect(c.id)}>
-              <td>{c.ticker}</td>
-              <td>{fmtCampaignDaysLeft(c, legs)}</td>
-
-              <td className={cashClass(summary.totalPL)}>
-                {fmt(summary.totalPL)}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
   );
 }

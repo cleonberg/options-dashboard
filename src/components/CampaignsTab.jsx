@@ -92,7 +92,7 @@ export default function CampaignsTab(props) {
           <div>Status: {selectedCampaign.endDate ? "Closed" : "Open"}</div>
         </header>
 
-        <section className="campaign-actions">
+        <section className="button-group">
           {/* <-- Added Edit button */}
           <button onClick={() => setShowEditForm(!showEditForm)}>
             {showEditForm ? "Cancel Edit" : "Edit"}

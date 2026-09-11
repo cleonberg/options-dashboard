@@ -1,231 +1,62 @@
+:root {
+  /* Surfaces & Elevation */
+  --bg-main: #080e1e;          /* Base canvas */
+  --bg-header: #0d162d;        /* Navigation header */
+  --bg-card: #121e3a;          /* Main cards & containers */
+  --bg-nested: #18284c;        /* Accordions, leg details, dropdowns */
+  --bg-input: #0a1226;         /* Recessed form fields */
+
+  /* Text & Content Hierarchy */
+  --text-main: #f8fafc;         /* Primary text & titles */
+  --text-subtle: #cbd5e1;       /* Secondary text & labels */
+  --text-muted: #94a3b8;        /* Metadata & table headers */
+  --text-placeholder: #475569;  /* Input placeholders */
+
+  /* Interactive Elements & Accents */
+  --primary: #4f46e5;           /* Primary buttons & active highlights */
+  --primary-hover: #4338ca;     /* Primary button hover state */
+  --bg-btn-secondary: #1e293b;  /* Secondary button background */
+  --bg-hover-btn: #334155;      /* Secondary button hover state */
+  --bg-hover-table: #1c2e56;    /* Table row hover state */
+  --bg-hover-row: #16254a;      /* Leg row hover state */
+
+  /* Borders & Dividers */
+  --border-color: #1e293b;      /* Main card & table dividers */
+  --border-btn: #334155;        /* Secondary button border */
+
+  /* Financial Indicators */
+  --color-positive: #22c55e;    /* Positive cash/P&L */
+  --color-negative: #ef4444;    /* Negative cash/P&L */
+}
+
+/* Global Styles */
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #0b1b3a;
-  color: #f5f7ff;
-}
-
-.app-title {
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.app-subtitle {
-  font-size: 12px;
-  color: #9fb3ff;
-}
-
-.tabs {
-  display: flex;
-  gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid #24345f;
-  background: #0f2145;
-}
-
-.tab-button {
-  border: none;
-  background: #182a52;
-  color: #cfd8ff;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.tab-button.active {
-  background: #3b5bd8;
-  color: #ffffff;
+  background: var(--bg-main);
+  color: var(--text-main);
 }
 
 main {
   padding: 16px;
 }
 
-/* Cards */
-
-.card {
-  background: #111f3f;
-  border-radius: 8px;
-  padding: 12px;
-  border: 1px solid #24345f;
-  margin-bottom: 12px;
-  color: #f5f7ff;   /* ← THIS FIXES YOUR PAGE TITLES */
+h2,
+h3 {
+  color: var(--text-main);
 }
 
-/* Inputs */
-
-.input {
-  background: #0b1b3a;
-  border: 1px solid #24345f;
-  color: #f5f7ff;
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.input::placeholder {
-  color: #6f82c5;
-}
-
-.input:focus {
-  outline: none;
-  border-color: #3b5bd8;
-}
-
-/* Buttons */
-
-button {
-  background: #3b5bd8;
-  border: none;
-  color: #ffffff;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-button.secondary {
-  background: #182a52;
-  color: #cfd8ff;
-}
-
-/* Form layout */
-
-.form-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.form-row .input {
-  flex: 1 1 120px;
-}
-
-/* Table */
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 8px;
-  font-size: 13px;
-}
-
-.table th,
-.table td {
-  padding: 6px 4px;
-  border-bottom: 1px solid #24345f;
-}
-
-.table th {
-  text-align: left;
-  color: #9fb3ff;
-}
-
-.table tr:hover {
-  background: #16254a;
-}
-
-/* Small text */
-
-.small {
-  font-size: 11px;
-  color: #9fb3ff;
-}
-
-/* Filters */
-
-.filters-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.filters-row .input {
-  flex: 1 1 140px;
-}
-
-/* Charts */
-
-.chart-container {
-  background: #111f3f;
-  border-radius: 8px;
-  border: 1px solid #24345f;
-  padding: 8px;
-  margin-bottom: 12px;
-}
-
-/* Settings */
-
-.settings-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.settings-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.settings-row .input {
-  flex: 1 1 200px;
-}
-
-/* Responsive */
-
-@media (max-width: 768px) {
-  .app-header {
-    flex-direction: column;
-    gap: 4px;
-  }
-}
-
-.cash-positive {
-  color: #4caf50;
-  font-weight: 600;
-}
-
-.cash-negative {
-  color: #f44336;
-  font-weight: 600;
-}
-
-/* optional: highlight selected campaign row */
-.table tr:hover {
-  background-color: #1b2b4f;
-}
-
-.table tr.selected {
-  background-color: #16254a;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.summary-label {
-  font-size: 12px;
-  color: #9fb3ff;
-  margin-bottom: 2px;
-}
-
-
+/* Header */
 
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #0b1b33;
-  color: white;
+  background: var(--bg-header);
+  color: var(--text-main);
   padding: 10px 16px;
-  border-bottom: 1px solid #1e2a45;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .header-left h2 {
@@ -248,7 +79,7 @@ button.secondary {
 .online-dot {
   width: 10px;
   height: 10px;
-  background: #4caf50;
+  background: var(--color-positive);
   border-radius: 50%;
 }
 
@@ -258,55 +89,266 @@ button.secondary {
 }
 
 .signout-btn {
-  background: #1e2a45;
-  border: 1px solid #3a4a6a;
+  background: var(--bg-btn-secondary);
+  border: 1px solid var(--border-btn);
   padding: 4px 10px;
-  color: white;
+  color: var(--text-main);
   border-radius: 4px;
   cursor: pointer;
 }
 
 .signout-btn:hover {
-  background: #2c3b5c;
+  background: var(--bg-hover-btn);
 }
 
-h2,
-h3 {
-  color: white;
+/* Tabs */
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-header);
 }
 
-
-.dropdown-section {
-  padding-bottom: 6px;
-  margin-bottom: 6px;
-  border-bottom: 1px solid #24345f;
-  font-size: 12px;
-  color: #9fb3ff;
+.tab-button {
+  border: none;
+  background: var(--bg-btn-secondary);
+  color: var(--text-subtle);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
 }
 
-.dropdown-label {
-  font-weight: 600;
-  color: #cfd8ff;
-  margin-bottom: 4px;
+.tab-button.active {
+  background: var(--primary);
+  color: #ffffff;
 }
 
+/* Cards & Containers */
+
+.card {
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 12px;
+  color: var(--text-main);
+}
+
+.chart-container {
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  padding: 8px;
+  margin-bottom: 12px;
+}
+
+/* Forms & Inputs */
+
+.input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.input::placeholder {
+  color: var(--text-placeholder);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.form-row .input {
+  flex: 1 1 120px;
+}
+
+/* Buttons */
+
+button {
+  background: var(--primary);
+  border: none;
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button:hover {
+  background: var(--primary-hover);
+}
+
+button.secondary {
+  background: var(--bg-btn-secondary);
+  color: var(--text-subtle);
+}
+
+button.secondary:hover {
+  background: var(--bg-hover-btn);
+}
 
 .sync-btn {
-  background: #3b5bd8;
+  background: var(--primary);
   padding: 4px 8px;
   font-size: 12px;
   border-radius: 4px;
 }
 
-.dirty-count {
+/* Tables */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.table th {
+  text-align: left;
+  color: var(--text-muted);
+}
+
+.table tr:hover {
+  background-color: var(--bg-hover-table);
+}
+
+.table tr.selected {
+  background-color: var(--bg-hover-row);
+}
+
+/* Campaign Summary & Summary Tables (Merged) */
+
+.campaign-summary {
+  padding: 16px;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  background: transparent;
   color: #f5f7ff;
+}
+
+.summary-table th,
+.summary-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #24345f;
+  color: #f5f7ff;
+  vertical-align: middle;
+}
+
+.summary-table th {
+  text-align: left;
+  color: #9fb3ff;
   font-weight: 600;
 }
 
-.last-sync {
-  opacity: 0.7;
+.summary-table tr:hover {
+  background-color: #1b2b4f;
+  cursor: pointer;
 }
 
+.closed-section {
+  margin-top: 20px;
+}
+
+.campaign-summary details summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text-subtle);
+}
+
+.deleted-campaigns-section {
+  background: transparent;
+  color: var(--text-main);
+  margin-top: 16px;
+}
+
+.deleted-campaigns-list > div {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+/* --- Strategy Pill/Badge --- */
+.strategy-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background-color: #24345f;
+  color: #cfd8ff;
+  margin-left: 8px;
+  border: 1px solid #3b4e7e;
+  white-space: nowrap;
+}
+
+/* --- Leg Ratio Badge --- */
+.leg-ratio-badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #111f3f;
+  color: #a0aec0;
+  border: 1px solid #24345f;
+}
+
+/* --- Days Left Progress Bar --- */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 160px;
+}
+
+.progress-bar-wrapper {
+  flex: 1;
+  height: 8px;
+  background-color: #111f3f;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #24345f;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Dynamic Expiration Colors */
+.progress-danger { background-color: #e53e3e; }   /* < 7 days remaining */
+.progress-warning { background-color: #dd6b20; }  /* < 21 days remaining */
+.progress-normal { background-color: #3182ce; }   /* > 21 days remaining */
+
+/* User Dropdown Container */
 .user-dropdown {
   position: relative;
 }
@@ -321,66 +363,92 @@ h3 {
 }
 
 .user-trigger:hover {
-  background: #1e2a45;
+  background: var(--bg-btn-secondary);
 }
 
 .caret {
   opacity: 0.7;
 }
 
+/* Dropdown Menu Container */
 .dropdown-menu {
   position: absolute;
   right: 0;
-  top: 32px;
-  background: #0f2145;
-  border: 1px solid #24345f;
-  border-radius: 6px;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 160px;
-  z-index: 10;
+  top: 100%;
+  margin-top: 8px;
+  width: 220px;
+  background-color: #121324;
+  border: 1px solid #2d2d48;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  padding: 12px;
+  z-index: 1000;
+  color: #e2e8f0;
 }
 
-.dropdown-menu button {
-  background: #182a52;
-  border: 1px solid #24345f;
-  padding: 6px 10px;
-  color: #cfd8ff;
-  text-align: left;
+/* Section Dividers & Text */
+.dropdown-section {
+  border-bottom: 1px solid #2d2d48;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.5;
 }
 
-.dropdown-menu button:hover {
-  background: #2c3b5c;
+.dropdown-label {
+  font-weight: 600;
+  color: #a78bfa;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
 }
 
 .dropdown-email {
-  font-size: 12px;
-  color: #9fb3ff;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #24345f;
-  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+/* Dropdown Buttons */
+.dropdown-menu button {
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 6px;
+  background-color: #581c87;
+  color: #ffffff;
+  border: 1px solid #6b21a8;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out;
+  text-align: center;
+}
+
+.dropdown-menu button:hover {
+  background-color: #6b21a8;
 }
 
 
-/* Leg List Styles */
-/* Leg List Styles */
+
+/* Leg List & Accordions */
+
 .leg-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-/* Outer container */
 .leg-row {
-  border: 1px solid #24345f;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: #111f3f;     /* ← MATCHES .card */
-  color: #f5f7ff;          /* ← LIGHT TEXT */
+  background: var(--bg-card);
+  color: var(--text-main);
 }
 
-/* Collapsed summary row */
 .leg-summary {
   display: flex;
   justify-content: space-between;
@@ -389,19 +457,16 @@ h3 {
   cursor: pointer;
 }
 
-/* Hover effect */
 .leg-summary:hover {
-  background: #16254a;     /* same as .table tr:hover */
+  background: var(--bg-hover-row);
 }
 
-/* Expanded details */
 .leg-details {
   padding: 12px;
-  border-top: 1px solid #24345f;
-  background: #0f2145;     /* slightly darker */
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-nested);
 }
 
-/* Detail rows */
 .detail-row {
   display: flex;
   justify-content: space-between;
@@ -410,17 +475,152 @@ h3 {
 
 .detail-row label {
   font-weight: bold;
-  color: #9fb3ff;          /* same as table headers */
+  color: var(--text-muted);
 }
 
-/* Inputs */
 .detail-row input,
 .detail-row textarea {
   width: 60%;
-  background: #0b1b3a;
-  border: 1px solid #24345f;
-  color: #f5f7ff;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
   border-radius: 4px;
   padding: 4px 6px;
 }
 
+/* Miscellaneous Helpers */
+
+.small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cash-positive {
+  color: var(--color-positive);
+  font-weight: 600;
+}
+
+.cash-negative {
+  color: var(--color-negative);
+  font-weight: 600;
+}
+
+ /* 3-Card Summary Grid Layout */
+.summary-grid-cards {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  flex: 1;
+  background: var(--bg-card, #111f3f);
+  border: 1px solid var(--border-color, #24345f);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.summary-card-title {
+  font-size: 12px;
+  color: var(--text-muted, #9fb3ff);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.summary-card-value {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.summary-card-metrics {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.summary-metric-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.summary-metric-label {
+  font-size: 11px;
+  color: var(--text-muted, #9fb3ff);
+  margin-bottom: 2px;
+  opacity: 0.8;
+}
+
+.summary-metric-val {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--text-main, #f5f7ff);
+}
+
+.summary-card-divider {
+  border-left: 1px solid var(--border-color, #24345f);
+  height: 28px;
+}
+
+.filters-row,
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.filters-row .input {
+  flex: 1 1 140px;
+}
+
+.settings-row .input {
+  flex: 1 1 200px;
+}
+
+.settings-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.dirty-count {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.last-sync {
+  opacity: 0.7;
+}
+
+/* Responsive Overrides */
+
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+.deleted-campaigns-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px; /* adjust spacing as needed */
+  align-items: center;
+}

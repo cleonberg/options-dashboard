@@ -3,7 +3,7 @@ import { signInWithGooglePopup, signInWithGoogleRedirect, signOutUser } from "..
 
 export default function GoogleSignIn({ useRedirect = false }) {
   return (
-    <div>
+    <div className = "button-group">
       <button onClick={() => (useRedirect ? signInWithGoogleRedirect() : signInWithGooglePopup())}>
         Sign in with Google
       </button>
