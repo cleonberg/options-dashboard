@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { fmt, cashClass, computeCampaignSummary } from "../logic/logic.js";
 import { createCampaign } from "../sync/sync.js";
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
@@ -43,6 +43,24 @@ export default function DashboardTab({ uid, campaigns = [], legs = [], summary, 
   if (!summary && campaigns.length === 0) {
     return <div className="card">Loading dashboard…</div>;
   }
+
+  // Add this right above your component:
+  function isSameId(idA, idB) {
+    if (idA == null || idB == null) return false;
+    return String(idA).trim().toLowerCase() === String(idB).trim().toLowerCase();
+  }
+
+  // Add temporarily in DashboardTab.jsx to inspect your state:
+  useEffect(() => {
+    campaigns.forEach((c) => {
+      const matched = legs.filter((l) => isSameId(l.campaignId, c.id));
+      console.log(`Campaign ${c.ticker} (ID: ${c.id}, Type: ${typeof c.id}): Found ${matched.length} legs`);
+      
+      if (matched.length === 0 && legs.length > 0) {
+        console.warn(`Mismatch sample leg campaignId:`, legs[0]?.campaignId, `Type:`, typeof legs[0]?.campaignId);
+      }
+    });
+  }, [campaigns, legs]);
 
   return (
     <div className="dashboard-tab">

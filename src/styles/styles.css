@@ -654,3 +654,38 @@ button.secondary:hover {
 .add-leg-content {
   overflow: hidden;
 }
+
+/* 1. Responsive Scroll Container (Prevents page overflow) */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* Smooth momentum scroll on iOS */
+}
+
+/* 2. Mobile Breakpoint Adjustments (< 600px) */
+@media (max-width: 600px) {
+  /* Hides any column header or cell with this class */
+  .hide-mobile {
+    display: none !important;
+  }
+
+  /* Compact table padding and font size for small screens */
+  .summary-table th,
+  .summary-table td {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  /* Compact strategy badge spacing */
+  .strategy-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    margin-left: 4px;
+  }
+
+  /* Compact progress bar width */
+  .progress-container {
+    max-width: 90px;
+    gap: 4px;
+  }
+}

@@ -43,44 +43,52 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
   };
 
   return (
-    <table className="summary-table">
-      <thead>
-        <tr>
-          <th onClick={() => handleSort("ticker")} style={{ cursor: "pointer", userSelect: "none" }}>
-            Ticker & Strategy{getSortIndicator("ticker")}
-          </th>
-          <th onClick={() => handleSort("startDate")} style={{ cursor: "pointer", userSelect: "none" }}>
-            Opened{getSortIndicator("startDate")}
-          </th>
-          <th onClick={() => handleSort("endDate")} style={{ cursor: "pointer", userSelect: "none" }}>
-            Closed{getSortIndicator("endDate")}
-          </th>
-          <th onClick={() => handleSort("totalPL")} style={{ cursor: "pointer", userSelect: "none" }}>
-            Total P/L{getSortIndicator("totalPL")}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {sortedCampaigns.map(c => {
-          const legsForCampaign = legs.filter(l => l.campaignId === c.id);
-          const summary = computeCampaignSummary(c, legsForCampaign);
-          const strategy = detectStrategy(legsForCampaign);
+    <div className="table-container">
+      <table className="summary-table">
+        <thead>
+          <tr>
+            <th onClick={() => handleSort("ticker")} style={{ cursor: "pointer", userSelect: "none" }}>
+              Ticker & Strategy{getSortIndicator("ticker")}
+            </th>
+            {/* Hidden on small screens */}
+            <th 
+              className="hide-mobile" 
+              onClick={() => handleSort("startDate")} 
+              style={{ cursor: "pointer", userSelect: "none" }}
+            >
+              Opened{getSortIndicator("startDate")}
+            </th>
+            <th onClick={() => handleSort("endDate")} style={{ cursor: "pointer", userSelect: "none" }}>
+              Closed{getSortIndicator("endDate")}
+            </th>
+            <th onClick={() => handleSort("totalPL")} style={{ cursor: "pointer", userSelect: "none" }}>
+              Total P/L{getSortIndicator("totalPL")}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedCampaigns.map(c => {
+            const legsForCampaign = legs.filter(l => l.campaignId === c.id);
+            const summary = computeCampaignSummary(c, legsForCampaign);
+            const strategy = detectStrategy(legsForCampaign);
 
-          return (
-            <tr key={c.id} onClick={() => onSelect(c.id)}>
-              <td>
-                <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
-                <span className="strategy-badge">{strategy}</span>
-              </td>
-              <td>{c.startDate || "-"}</td>
-              <td>{c.endDate || "-"}</td>
-              <td className={cashClass(summary.totalPL)}>
-                {fmt(summary.totalPL)}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+            return (
+              <tr key={c.id} onClick={() => onSelect(c.id)}>
+                <td>
+                  <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
+                  <span className="strategy-badge">{strategy}</span>
+                </td>
+                {/* Hidden on small screens */}
+                <td className="hide-mobile">{c.startDate || "-"}</td>
+                <td>{c.endDate || "-"}</td>
+                <td className={cashClass(summary.totalPL)}>
+                  {fmt(summary.totalPL)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

@@ -2,11 +2,11 @@ import React, { useState, useMemo } from "react";
 import { fmt, cashClass, computeCampaignSummary, fmtCampaignDaysLeft, detectStrategy } from "../logic/logic.js";
 import DaysLeftProgressBar from "./DaysLeftProgressBar.jsx";
 import LegRatioBadge from "./LegRatioBadge.jsx";
-import CampaignForm from "./CampaignForm.jsx"; // <-- Import the form
+import CampaignForm from "./CampaignForm.jsx";
 
-export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCampaign }) { // <-- Added onAddCampaign prop
+export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCampaign }) {
   const [sortConfig, setSortConfig] = useState({ field: "daysLeft", direction: "asc" });
-  const [isAddingCampaign, setIsAddingCampaign] = useState(false); // <-- State for the toggle
+  const [isAddingCampaign, setIsAddingCampaign] = useState(false);
 
   const handleSort = (field) => {
     setSortConfig((prev) => ({
@@ -67,15 +67,13 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCamp
         </button>
       </div>
 
-      {/* Animated Expandable Wrapper (Reusing the CSS classes from the Leg trick!) */}
+      {/* Animated Expandable Wrapper */}
       <div className={`add-leg-wrapper ${isAddingCampaign ? "open" : ""}`}>
         <div className="add-leg-content">
           <div style={{ paddingBottom: "24px" }}>
             <CampaignForm 
               onSubmit={(campaignData) => {
-                // Pass the data up to the parent to save
                 if (onAddCampaign) onAddCampaign(campaignData);
-                // Collapse the form smoothly after saving
                 setIsAddingCampaign(false); 
               }}
               onCancel={() => setIsAddingCampaign(false)}
@@ -84,49 +82,53 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCamp
         </div>
       </div>
 
-      {/* The Table */}
-      <table className="summary-table">
-        <thead>
-          <tr>
-            <th onClick={() => handleSort("ticker")} style={{ cursor: "pointer", userSelect: "none" }}>
-              Ticker & Strategy{getSortIndicator("ticker")}
-            </th>
-            <th>Legs Ratio</th>
-            <th onClick={() => handleSort("daysLeft")} style={{ cursor: "pointer", userSelect: "none" }}>
-              Time Remaining{getSortIndicator("daysLeft")}
-            </th>
-            <th onClick={() => handleSort("totalPL")} style={{ cursor: "pointer", userSelect: "none" }}>
-              Total P/L{getSortIndicator("totalPL")}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedCampaigns.map(c => {
-            const legsForCampaign = legs.filter(l => l.campaignId === c.id);
-            const summary = computeCampaignSummary(c, legsForCampaign);
-            const daysLeft = fmtCampaignDaysLeft(c, legs);
-            const strategy = detectStrategy(legsForCampaign);
+      {/* Responsive Table Wrapper */}
+      <div className="table-container">
+        <table className="summary-table">
+          <thead>
+            <tr>
+              <th onClick={() => handleSort("ticker")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Ticker & Strategy{getSortIndicator("ticker")}
+              </th>
+              {/* Hidden on small screens */}
+              <th className="hide-mobile">Legs Ratio</th>
+              <th onClick={() => handleSort("daysLeft")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Time Remaining{getSortIndicator("daysLeft")}
+              </th>
+              <th onClick={() => handleSort("totalPL")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Total P/L{getSortIndicator("totalPL")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedCampaigns.map(c => {
+              const legsForCampaign = legs.filter(l => l.campaignId === c.id);
+              const summary = computeCampaignSummary(c, legsForCampaign);
+              const daysLeft = fmtCampaignDaysLeft(c, legs);
+              const strategy = detectStrategy(legsForCampaign);
 
-            return (
-              <tr key={c.id} onClick={() => onSelect(c.id)}>
-                <td>
-                  <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
-                  <span className="strategy-badge">{strategy}</span>
-                </td>
-                <td>
-                  <LegRatioBadge legs={legsForCampaign} />
-                </td>
-                <td>
-                  <DaysLeftProgressBar daysLeft={daysLeft} />
-                </td>
-                <td className={cashClass(summary.totalPL)}>
-                  {fmt(summary.totalPL)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+              return (
+                <tr key={c.id} onClick={() => onSelect(c.id)}>
+                  <td>
+                    <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
+                    <span className="strategy-badge">{strategy}</span>
+                  </td>
+                  {/* Hidden on small screens */}
+                  <td className="hide-mobile">
+                    <LegRatioBadge legs={legsForCampaign} />
+                  </td>
+                  <td>
+                    <DaysLeftProgressBar daysLeft={daysLeft} />
+                  </td>
+                  <td className={cashClass(summary.totalPL)}>
+                    {fmt(summary.totalPL)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
