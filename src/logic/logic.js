@@ -339,16 +339,37 @@ export function fmtCampaignDaysLeft(campaign, legs) {
 
   if (openLegs.length === 0) return null;
 
+  // Parse and normalize expiration dates to local midnight
   const expirations = openLegs
-    .map(l => new Date(l.expiry))
-    .filter(d => !isNaN(d));
+    .map(l => {
+      if (!l.expiry) return null;
+      // Handle standard "YYYY-MM-DD" strings locally to prevent UTC shift
+      const cleanDateStr = l.expiry.split('T')[0];
+      const parts = cleanDateStr.split('-');
+      
+      let d;
+      if (parts.length === 3) {
+        d = new Date(parts[0], parts[1] - 1, parts[2]);
+      } else {
+        d = new Date(l.expiry);
+      }
+      
+      if (isNaN(d)) return null;
+      d.setHours(0, 0, 0, 0); // Strip time component
+      return d;
+    })
+    .filter(d => d !== null);
 
   if (expirations.length === 0) return "-";
 
   const soonest = expirations.sort((a, b) => a - b)[0];
+  
+  // Normalize today's date to local midnight
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  return Math.ceil((soonest - today) / 86400000);
+  const diffTime = soonest - today;
+  return Math.round(diffTime / 86400000); // 86400000 ms per day
 }
 
 // Auto-detect Option Strategy from active legs

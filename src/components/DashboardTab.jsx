@@ -54,7 +54,7 @@ export default function DashboardTab({ uid, campaigns = [], legs = [], summary, 
   useEffect(() => {
     campaigns.forEach((c) => {
       const matched = legs.filter((l) => isSameId(l.campaignId, c.id));
-      console.log(`Campaign ${c.ticker} (ID: ${c.id}, Type: ${typeof c.id}): Found ${matched.length} legs`);
+      // console.log(`Campaign ${c.ticker} (ID: ${c.id}, Type: ${typeof c.id}): Found ${matched.length} legs`);
       
       if (matched.length === 0 && legs.length > 0) {
         console.warn(`Mismatch sample leg campaignId:`, legs[0]?.campaignId, `Type:`, typeof legs[0]?.campaignId);

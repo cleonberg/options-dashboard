@@ -7,11 +7,7 @@ import { normalizeRemoteDoc, toMillis } from "./utils/firestoreUtils";
 /**
  * Pull remote changes since `opts.since` (millis).
  * - If Firestore supports querying on serverUpdatedAt, uses that; otherwise fetches all and filters.
- * - Applies LWW rules:
- *   - If local missing -> write remote (dirty:false)
- *   - If local not dirty and remote newer -> write remote
- *   - If local dirty and local.clientUpdatedAt > remote.serverUpdatedAt -> keep local (skip)
- *   - If local dirty and remote.serverUpdatedAt >= local.clientUpdatedAt -> accept remote (overwrite)
+ * - Applies LWW rules (Last Write Wins) using Dexie batch operations for maximum speed.
  *
  * Returns { maxServerUpdatedAt } (millis) for runSync to persist.
  */
@@ -24,7 +20,7 @@ export async function pullRemoteChanges(uid, opts = {}) {
     const ref = collection(db, "users", uid, collectionName);
     let snaps;
 
-    // Try to query by serverUpdatedAt if possible
+    // 1. Single Network Request (Batched Pull)
     try {
       if (since > 0) {
         const ts = Timestamp.fromMillis(since);
@@ -34,56 +30,62 @@ export async function pullRemoteChanges(uid, opts = {}) {
         snaps = await getDocs(ref);
       }
     } catch (err) {
-      // Fallback: fetch all and filter client-side
       console.warn("[pullRemoteChanges] query by serverUpdatedAt failed, falling back to full fetch", err);
       snaps = await getDocs(ref);
     }
 
-    for (const docSnap of snaps.docs) {
-      const id = docSnap.id;
-      const raw = docSnap.data();
-      const remote = normalizeRemoteDoc(id, raw);
-      const serverTs = remote.serverUpdatedAt ?? remote.updatedAt ?? Date.now();
-      if (serverTs > maxServerUpdatedAt) maxServerUpdatedAt = serverTs;
+    if (snaps.empty) return;
 
-      // Load local
-      const local = await dbLocal[collectionName].get(id);
+    // 2. Prepare incoming remote records in memory
+    const incomingRecords = snaps.docs.map(docSnap => {
+      const id = docSnap.id;
+      const remote = normalizeRemoteDoc(id, docSnap.data());
+      const serverTs = remote.serverUpdatedAt ?? remote.updatedAt ?? Date.now();
+      
+      if (serverTs > maxServerUpdatedAt) {
+        maxServerUpdatedAt = serverTs;
+      }
+      
+      return { id, remote, serverTs };
+    });
+
+    // 3. Batch Read from Dexie (One local DB operation instead of hundreds)
+    const incomingIds = incomingRecords.map(record => record.id);
+    const localRecords = await dbLocal[collectionName].bulkGet(incomingIds);
+
+    const recordsToPut = [];
+
+    // 4. Apply LWW Rules in memory
+    for (let i = 0; i < incomingRecords.length; i++) {
+      const { remote, serverTs } = incomingRecords[i];
+      const local = localRecords[i];
 
       // If local missing -> write remote
       if (!local) {
-        await dbLocal[collectionName].put({
-          ...remote,
-          dirty: false,
-          updatedAt: serverTs
-        });
+        recordsToPut.push({ ...remote, dirty: false, updatedAt: serverTs });
         continue;
       }
 
       // If local not dirty -> accept remote if remote newer
       if (!local.dirty) {
         if ((local.updatedAt || 0) < serverTs) {
-          await dbLocal[collectionName].put({
-            ...remote,
-            dirty: false,
-            updatedAt: serverTs
-          });
+          recordsToPut.push({ ...remote, dirty: false, updatedAt: serverTs });
         }
         continue;
       }
 
       // Local is dirty -> compare clientUpdatedAt vs serverUpdatedAt
       const clientUpdatedAt = local.clientUpdatedAt ?? local.updatedAt ?? 0;
-      if (clientUpdatedAt > serverTs) {
-        // local wins: keep local and let uploadDirty re-send later
-        continue;
-      } else {
+      if (clientUpdatedAt <= serverTs) {
         // remote is same or newer: accept remote and clear dirty
-        await dbLocal[collectionName].put({
-          ...remote,
-          dirty: false,
-          updatedAt: serverTs
-        });
+        recordsToPut.push({ ...remote, dirty: false, updatedAt: serverTs });
       }
+      // If clientUpdatedAt > serverTs, local wins: do nothing (skip)
+    }
+
+    // 5. Batch Write to Dexie (One local DB operation instead of hundreds)
+    if (recordsToPut.length > 0) {
+      await dbLocal[collectionName].bulkPut(recordsToPut);
     }
   }
 

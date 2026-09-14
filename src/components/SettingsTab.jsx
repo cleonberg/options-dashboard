@@ -1,3 +1,4 @@
+// src/components/SettingsTab.jsx
 import React, { useRef, useState, useEffect } from "react";
 import dbLocal from "../db/dexie";
 import GoogleSignIn from "./GoogleSignIn.jsx";
@@ -8,6 +9,11 @@ import { buildImportData } from "../logic/importCsv.js";
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
   const [deletedCampaigns, setDeletedCampaigns] = useState([]);
+  const [isResetting, setIsResetting] = useState(false);
+
+  // ✨ ADDED: State for our hidden Developer Mode
+  const [devClicks, setDevClicks] = useState(0);
+  const [showDevMode, setShowDevMode] = useState(false);
 
   // Fetch deleted campaigns when the tab opens
   useEffect(() => {
@@ -25,12 +31,26 @@ export default function SettingsTab({ reloadAll }) {
     }
   }
 
+  // ✨ ADDED: The secret unlock mechanism
+  function handleSecretTap() {
+    if (showDevMode) return;
+    const newCount = devClicks + 1;
+    if (newCount >= 5) {
+      setShowDevMode(true);
+      alert("🛠️ Developer Mode Unlocked!");
+    } else {
+      setDevClicks(newCount);
+      // Optional: Reset clicks if they stop tapping (basic timeout)
+      setTimeout(() => setDevClicks(0), 3000); 
+    }
+  }
+
   // ---------- Option 1: Undelete Logic ----------
   async function handleUndelete(campaign) {
     await dbLocal.campaigns.update(campaign.id, {
       deleted: false,
       dirty: true,
-      updatedAt: new Date().toISOString(),
+      updatedAt: Date.now(), // Ensure number format here too
     });
     alert(`Restored ${campaign.Ticker || "Campaign"}`);
     loadDeletedCampaigns(); // Refresh the list
@@ -84,7 +104,7 @@ export default function SettingsTab({ reloadAll }) {
     await dbLocal.campaigns.clear();
     await dbLocal.legs.clear();
 
-    const now = new Date().toISOString();
+    const now = Date.now();
 
     const campaignsToInsert = campaigns.map((c) => ({
       ...c,
@@ -112,13 +132,28 @@ export default function SettingsTab({ reloadAll }) {
     if (!window.confirm("Delete local data and re-download from the server?")) return;
 
     const uid = auth.currentUser?.uid;
-    await dbLocal.campaigns.clear();
-    await dbLocal.legs.clear();
+    setIsResetting(true); 
 
-    if (uid) {
-      await initialSync(uid);
+    try {
+      await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
+        await dbLocal.campaigns.clear();
+        await dbLocal.legs.clear();
+      });
+
+      if (uid) {
+        await initialSync(uid);
+      }
+
+      if (typeof reloadAll === "function") {
+        reloadAll();
+      }
+
+    } catch (error) {
+      console.error("Error during reset and resync:", error);
+      alert("Something went wrong while resetting your data. Please try again.");
+    } finally {
+      setIsResetting(false);
     }
-    if (typeof reloadAll === "function") reloadAll();
   }
 
   async function handleDeleteAll() {
@@ -177,25 +212,111 @@ export default function SettingsTab({ reloadAll }) {
       return;
     }
 
-    if (!window.confirm("Importing will overwrite existing local data. Continue?")) return;
+    if (!window.confirm("Importing will merge this backup with your existing data. Newer items will be kept. Continue?")) return;
 
-    await dbLocal.campaigns.clear();
-    await dbLocal.legs.clear();
+    const now = Date.now(); 
 
-    const now = new Date().toISOString();
+    const mergeItems = async (table, importedArray) => {
+      if (!Array.isArray(importedArray)) return;
 
-    if (Array.isArray(data.campaigns)) {
-      for (const c of data.campaigns) {
-        await dbLocal.campaigns.put({ ...c, dirty: true, updatedAt: c.updatedAt || now });
+      for (const importedItem of importedArray) {
+        const localItem = await table.get(importedItem.id);
+
+        if (!localItem) {
+          await table.put({ 
+            ...importedItem, 
+            dirty: true, 
+            updatedAt: typeof importedItem.updatedAt === 'number' ? importedItem.updatedAt : now 
+          });
+          continue;
+        }
+
+        const importedTime = Number(importedItem.updatedAt) || 0;
+        const localTime = Number(localItem.updatedAt) || 0;
+
+        if (importedTime > localTime) {
+          await table.put({ ...importedItem, dirty: true });
+        }
       }
-    }
-    if (Array.isArray(data.legs)) {
-      for (const l of data.legs) {
-        await dbLocal.legs.put({ ...l, dirty: true, updatedAt: l.updatedAt || now });
-      }
+    };
+
+    await mergeItems(dbLocal.campaigns, data.campaigns);
+    await mergeItems(dbLocal.legs, data.legs);
+
+    e.target.value = null; 
+
+    alert("Import complete. Syncing any missing data to Firestore...");
+    if (typeof reloadAll === "function") reloadAll();
+  }
+  
+  async function handleHardResetImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const text = await file.text();
+    let data;
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      alert("Invalid JSON file.");
+      return;
     }
 
-    alert("Import complete. Syncing to Firestore...");
+    const warning = "DANGER: This will permanently overwrite ALL current data on ALL synced devices with this backup file. Are you absolutely sure?";
+    if (!window.confirm(warning)) {
+      e.target.value = null;
+      return;
+    }
+
+    const now = Date.now();
+
+    const currentCampaigns = await dbLocal.campaigns.toArray();
+    const currentLegs = await dbLocal.legs.toArray();
+
+    const campaignTombstones = currentCampaigns.map(c => ({
+      ...c,
+      deleted: true,
+      dirty: true,
+      updatedAt: now
+    }));
+
+    const legTombstones = currentLegs.map(l => ({
+      ...l,
+      deleted: true,
+      dirty: true,
+      updatedAt: now
+    }));
+
+    await dbLocal.campaigns.bulkPut(campaignTombstones);
+    await dbLocal.legs.bulkPut(legTombstones);
+
+    const futureTime = now + 5000; 
+
+    const importedCampaigns = (data.campaigns || []).map(c => ({
+      ...c,
+      deleted: false, 
+      dirty: true,    
+      updatedAt: futureTime
+    }));
+
+    const importedLegs = (data.legs || []).map(l => ({
+      ...l,
+      deleted: false,
+      dirty: true,
+      updatedAt: futureTime
+    }));
+
+    await dbLocal.campaigns.bulkPut(importedCampaigns);
+    await dbLocal.legs.bulkPut(importedLegs);
+
+    e.target.value = null; 
+
+    alert("Hard Reset complete. The app will now sync the backup to all devices.");
+    
+    if (typeof forceSync === "function" && window.currentUserUid) {
+      forceSync(window.currentUserUid);
+    }
     if (typeof reloadAll === "function") reloadAll();
   }
 
@@ -249,7 +370,7 @@ export default function SettingsTab({ reloadAll }) {
         </div>
       </div>
 
-      {/* 3. TRASH & RECOVERY (OPTION 1) */}
+      {/* 3. TRASH & RECOVERY */}
       <div className="card">
         <h3>Trash & Recovery</h3>
         <p className="small">Deleted campaigns are stored as local tombstones until permanently cleared.</p>
@@ -282,12 +403,22 @@ export default function SettingsTab({ reloadAll }) {
 
       {/* 4. DANGER ZONE */}
       <div className="card" style={{ border: "1px solid var(--color-negative)", background: "rgba(239, 68, 68, 0.05)" }}>
-        <h3 style={{ color: "var(--color-negative)" }}>Danger Zone</h3>
+        {/* ✨ ADDED onClick listener to the Danger Zone title */}
+        <h3 
+          style={{ color: "var(--color-negative)", cursor: "pointer", userSelect: "none" }}
+          onClick={handleSecretTap}
+        >
+          Danger Zone
+        </h3>
         
         <div className="settings-section-title" style={{ marginTop: "12px" }}>Fix Local Database</div>
         <p className="small" style={{ marginBottom: "8px" }}>Wipes local data and re-downloads everything from your cloud account.</p>
-        <button className="secondary" onClick={handleReset}>
-          Resync from Server
+        <button 
+          className="secondary" 
+          onClick={handleReset}
+          disabled={isResetting}
+        >
+          {isResetting ? "Resyncing..." : "Resync from Server"}
         </button>
 
         <div className="settings-section-title" style={{ marginTop: "20px" }}>Nuclear Option</div>
@@ -299,6 +430,27 @@ export default function SettingsTab({ reloadAll }) {
           Delete ALL Data Forever
         </button>
       </div>
+
+      {/* ✨ 5. DEVELOPER MODE (HIDDEN) */}
+      {showDevMode && (
+        <div className="card" style={{ border: "2px dashed #9333ea", background: "rgba(147, 51, 234, 0.05)", marginTop: "8px" }}>
+          <h3 style={{ color: "#9333ea", marginBottom: "8px" }}>🛠️ Developer Tools</h3>
+          
+          <div className="settings-section-title">Nuke & Pave (Hard Reset)</div>
+          <p className="small" style={{ marginBottom: "12px", color: "var(--color-text-secondary)" }}>
+            Force-overwrites your entire local Dexie database with a JSON file, and pushes tombstones to force all other devices to wipe their local caches.
+          </p>
+          <div className="settings-row">
+            <input
+              type="file"
+              className="input"
+              accept=".json"
+              onChange={handleHardResetImport}
+              style={{ maxWidth: "250px", borderColor: "#9333ea" }}
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   );

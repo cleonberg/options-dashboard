@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { fmt, cashClass, computeLegPL } from "../logic/logic.js";
-import { editLeg, closeLeg, rollLeg, deleteLeg } from "../sync/sync.js";
+import { editLeg, closeLeg, reopenLeg, rollLeg, deleteLeg } from "../sync/sync.js";
 
 export default function LegRow({ leg, uid, reloadAll }) {
   const [expanded, setExpanded] = useState(false);
@@ -13,6 +13,7 @@ export default function LegRow({ leg, uid, reloadAll }) {
 
   function update(field, value) {
     editLeg(uid, { ...leg, [field]: value });
+    if (reloadAll) reloadAll();
   }
 
   // Safely handles both Strings and Numbers (timestamps)
@@ -58,7 +59,14 @@ export default function LegRow({ leg, uid, reloadAll }) {
             label="Type" 
             value={leg.type}
             type="select"
-            options={["Call", "Put", "Stock", "Short Call", "Short Put"]} 
+            options={[
+              { value: "sell_put", label: "Short Put" },
+              { value: "buy_put", label: "Long Put" },
+              { value: "sell_call", label: "Short Call" },
+              { value: "buy_call", label: "Long Call" },
+              { value: "buy_stock", label: "Long Stock" },
+              { value: "sell_stock", label: "Short Stock" },
+            ]} 
             onChange={v => update("type", v)} 
           />
 
@@ -98,21 +106,42 @@ export default function LegRow({ leg, uid, reloadAll }) {
           <div className="leg-actions" style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
             {leg.isOpen ? (
               <>
-                <button onClick={() => closeLeg(uid, leg)}>Close</button>
-                <button onClick={() => rollLeg(uid, leg)}>Roll</button>
+                <button 
+                  onClick={async () => {
+                    await closeLeg(uid, leg);
+                    if (reloadAll) reloadAll();
+                  }}
+                >
+                  Close
+                </button>
+                <button 
+                  onClick={async () => {
+                    await rollLeg(uid, leg);
+                    if (reloadAll) reloadAll();
+                  }}
+                >
+                  Roll
+                </button>
               </>
             ) : (
-              <span className="closed-tag" style={{ padding: "6px 12px", border: "1px solid #a1a1aa", borderRadius: "4px", color: "#a1a1aa" }}>
-                Closed
-              </span>
+              <button 
+                onClick={async () => {
+                  await reopenLeg(uid, leg);
+                  if (reloadAll) reloadAll();
+                }}
+                style={{ backgroundColor: "#2b4c7e", borderColor: "#3182ce", color: "#9fb3ff" }}
+              >
+                Reopen
+              </button>
             )}
             
             {/* Delete button pushed to the right side */}
             <button 
               style={{ backgroundColor: "#5f2424", borderColor: "#8c3636", color: "#ff9f9f", marginLeft: "auto" }}
-              onClick={() => {
+              onClick={async () => {
                 if(window.confirm("Are you sure you want to delete this leg entirely?")) {
-                  deleteLeg(uid, leg.id);
+                  await deleteLeg(uid, leg.id);
+                  if (reloadAll) reloadAll();
                 }
               }}
             >
@@ -143,6 +172,15 @@ function EditableField({ label, value, type = "text", options = [], onChange }) 
     }
   }
 
+  // 4. Handle direct selection changes immediately for dropdowns
+  function handleSelectChange(e) {
+    const newVal = e.target.value;
+    setLocalValue(newVal);
+    if (newVal !== (value ?? "")) {
+      onChange(newVal);
+    }
+  }
+
   return (
     <div className="detail-row">
       <label>{label}</label>
@@ -156,11 +194,15 @@ function EditableField({ label, value, type = "text", options = [], onChange }) 
       ) : type === "select" ? (
         <select
           value={localValue}
-          onChange={e => setLocalValue(e.target.value)}
-          onBlur={handleBlur}
+          onChange={handleSelectChange}
           style={{ width: "100%", padding: "8px", borderRadius: "4px", backgroundColor: "#2b2b2b", color: "#fff", border: "1px solid #444" }}
         >
-          {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          {options.map(opt => {
+            const isObj = typeof opt === "object" && opt !== null;
+            const optVal = isObj ? opt.value : opt;
+            const optLabel = isObj ? opt.label : opt;
+            return <option key={optVal} value={optVal}>{optLabel}</option>;
+          })}
         </select>
       ) : (
         <input

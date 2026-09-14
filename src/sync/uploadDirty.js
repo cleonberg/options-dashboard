@@ -1,8 +1,7 @@
 // src/sync/uploadDirty.js
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { dbLocal } from "../db/dexie";
-import { normalizeRemoteDoc } from "./utils/firestoreUtils";
 import { wrapError } from "./errorUtils";
 
 /**
@@ -22,75 +21,80 @@ export async function uploadDirty(uid) {
 
   const result = { uploaded: { campaigns: 0, legs: 0 } };
 
-  async function uploadRow(collectionName, row) {
-    const ref = doc(db, "users", uid, collectionName, row.id);
-    
-    // Safely extract primitive timestamp
-    const trackingTimestamp = normalizeTime(row.updatedAt);
+  // 1. Fetch all dirty rows at once
+  const dirtyCampaigns = await dbLocal.campaigns.filter(c => c.dirty === true).toArray();
+  const dirtyLegs = await dbLocal.legs.filter(l => l.dirty === true).toArray();
 
-    const payload = {
-      ...row,
-      dirty: false, // Ensure we don't poison Firestore
-      clientUpdatedAt: trackingTimestamp,
-      serverUpdatedAt: serverTimestamp()
-    };
+  if (dirtyCampaigns.length === 0 && dirtyLegs.length === 0) {
+    return result; // Nothing to do
+  }
+
+  // 2. Combine them into a single array for processing
+  const itemsToUpload = [
+    ...dirtyCampaigns.map(c => ({ collectionName: "campaigns", row: c })),
+    ...dirtyLegs.map(l => ({ collectionName: "legs", row: l }))
+  ];
+
+  // 3. Process in chunks (Firebase batch limit is 500)
+  const CHUNK_SIZE = 450; 
+  
+  for (let i = 0; i < itemsToUpload.length; i += CHUNK_SIZE) {
+    const chunk = itemsToUpload.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    
+    // We keep track of this chunk's info so we can clean up Dexie afterward
+    const trackingList = [];
+
+    // Stage all writes in the batch
+    for (const item of chunk) {
+      const { collectionName, row } = item;
+      const ref = doc(db, "users", uid, collectionName, row.id);
+      const trackingTimestamp = normalizeTime(row.updatedAt);
+
+      const payload = {
+        ...row,
+        dirty: false,
+        clientUpdatedAt: trackingTimestamp,
+        serverUpdatedAt: serverTimestamp() // Let Firebase set this on the server
+      };
+
+      batch.set(ref, payload, { merge: true });
+      
+      trackingList.push({ collectionName, id: row.id, trackingTimestamp });
+    }
 
     try {
-      await setDoc(ref, payload, { merge: true });
+      // 4. Send the entire batch in ONE network request
+      await batch.commit();
 
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        throw new Error(`Uploaded document missing on remote readback inside ${collectionName}`);
+      // Update counters
+      for (const item of chunk) {
+        result.uploaded[item.collectionName]++;
       }
-      
-      const remote = normalizeRemoteDoc(snap.id, snap.data());
-      const finalServerTs = remote.serverUpdatedAt ?? remote.updatedAt ?? Date.now();
 
+      // 5. Update local database to mark as clean (protecting against mid-flight edits)
       await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
-        const liveLocal = await dbLocal[collectionName].get(row.id);
+        for (const item of trackingList) {
+          const { collectionName, id, trackingTimestamp } = item;
+          const liveLocal = await dbLocal[collectionName].get(id);
 
-        if (!liveLocal) return;
-
-        // Safely extract primitive timestamp for comparison
-        const liveLocalTime = normalizeTime(liveLocal.updatedAt);
-
-        // Bulletproof numeric comparison
-        if (liveLocalTime === trackingTimestamp) {
-          await dbLocal[collectionName].put({
-            ...remote,
-            dirty: false,
-            updatedAt: finalServerTs 
-          });
-        } else {
-          console.log(`[uploadDirty] Mid-flight modification detected on ${collectionName}/${row.id}. Keeping local dirty status.`);
+          if (liveLocal) {
+            const liveLocalTime = normalizeTime(liveLocal.updatedAt);
+            
+            // Bulletproof numeric comparison
+            if (liveLocalTime === trackingTimestamp) {
+              // Note: We do NOT set the local timestamp here. 
+              // We let pullRemoteChanges (which runs next) pull the exact server time.
+              await dbLocal[collectionName].update(id, { dirty: false });
+            } else {
+              console.log(`[uploadDirty] Mid-flight modification detected on ${collectionName}/${id}. Keeping local dirty status.`);
+            }
+          }
         }
       });
 
-      return { ok: true, remote };
     } catch (err) {
-      throw wrapError(err, `[uploadRow Failure on ${collectionName}] `);
-    }
-  }
-
-  // --- Process Dirty Campaigns ---
-  const dirtyCampaigns = await dbLocal.campaigns.filter(c => c.dirty === true).toArray();
-  for (const c of dirtyCampaigns) {
-    try {
-      await uploadRow("campaigns", c);
-      result.uploaded.campaigns++;
-    } catch (err) {
-      console.warn("[uploadDirty] Campaign upload failed:", c.id, err);
-    }
-  }
-
-  // --- Process Dirty Legs ---
-  const dirtyLegs = await dbLocal.legs.filter(l => l.dirty === true).toArray();
-  for (const l of dirtyLegs) {
-    try {
-      await uploadRow("legs", l);
-      result.uploaded.legs++;
-    } catch (err) {
-      console.warn("[uploadDirty] Leg upload failed:", l.id, err);
+      throw wrapError(err, `[uploadDirty] Batch upload failed during chunk processing`);
     }
   }
 

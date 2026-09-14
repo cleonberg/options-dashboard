@@ -7,13 +7,11 @@ import {
   doc,
   setDoc,
   serverTimestamp,
-  writeBatch,
-  deleteDoc
+  writeBatch
 } from "firebase/firestore";
 
 import { db } from "../firebase";        // if firebase.js is in src/
 import { dbLocal } from "../db/dexie";   // FIXED
-import { pushDelete } from "./pushDelete"; // FIXED
 
 /* -----------------------
    Helpers
@@ -163,7 +161,7 @@ export function subscribeToLegs(uid) {
       // 2. The Golden Rule: Never overwrite a local dirty record
       if (localRecord && localRecord.dirty) {
         console.log(`[Sync] Skipping overwrite of leg ${id}, local edits pending.`);
-        continue;
+        continue; 
       }
 
       // 3. Safe to overwrite
@@ -176,11 +174,9 @@ export function subscribeToLegs(uid) {
 export async function ensureInitialSync(uid) {
   if (!uid) return;
 
-  // We only need to count the rows, not load them into memory
   const campaignCount = await dbLocal.campaigns.count();
   const legCount = await dbLocal.legs.count();
 
-  // If Dexie is completely empty, run the initial pull from Firestore
   if (campaignCount === 0 && legCount === 0) {
     console.log("[TRACE] Dexie empty — running initialSync");
     await initialSync(uid);
@@ -197,7 +193,6 @@ export function startBackgroundSync(uid) {
   const unsubscribeCampaigns = subscribeToCampaigns(uid);
   const unsubscribeLegs = subscribeToLegs(uid);
 
-  // Return a cleanup function so React can shut off the listeners on logout
   return () => {
     unsubscribeCampaigns();
     unsubscribeLegs();
@@ -215,7 +210,7 @@ export async function createCampaign(uid, fields) {
   const campaign = normalizeCampaign({
     id,
     uid,
-    status: "open", // 👈 ADD THIS LINE
+    status: "open",
     ...fields,
     openDate: fields.openDate ?? now,
     updatedAt: now,
@@ -237,7 +232,6 @@ export async function createCampaign(uid, fields) {
     await dbLocal.campaigns.update(id, { dirty: false });
   } catch (err) {
     console.error("[createCampaign] push failed", err);
-    // leave dirty=true for forceSync
   }
 
   return id;
@@ -279,7 +273,7 @@ export async function closeCampaign(uid, id) {
   await updateCampaign(uid, id, { 
     status: "closed", 
     closed: true,
-    endDate: new Date().toISOString().slice(0, 10) // ✨ Stamps today's date!
+    endDate: new Date().toISOString().slice(0, 10)
   });
 }
 
@@ -287,7 +281,7 @@ export async function reopenCampaign(uid, id) {
   await updateCampaign(uid, id, { 
     status: "open", 
     closed: false,
-    endDate: "" // ✨ Clears the end date
+    endDate: ""
   });
 }
 
@@ -295,6 +289,7 @@ export async function deleteCampaign(uid, id) {
   const existing = await dbLocal.campaigns.get(id);
   if (!existing) return;
 
+  // 1. Mark as deleted locally with a tombstone
   const tombstone = {
     ...existing,
     deleted: true,
@@ -304,12 +299,16 @@ export async function deleteCampaign(uid, id) {
 
   await dbLocal.campaigns.put(tombstone);
 
-  try {
-    await pushDelete(uid, "campaigns", id);
-    await dbLocal.campaigns.update(id, { dirty: false });
-  } catch (err) {
-    console.error("[deleteCampaign] remote delete failed", err);
-  }
+  // 2. Add to local deletion queue so processDeletionQueue() handles it safely in batch
+  await dbLocal.deletionJobs.add({
+    uid,
+    type: "deleteCampaign",
+    targetId: id,
+    createdAt: Date.now(),
+    attempts: 0
+  });
+
+  console.log(`[deleteCampaign] Queued campaign ${id} for deletion`);
 }
 
 /* -----------------------
@@ -323,8 +322,8 @@ export async function addLeg(uid, legFields) {
   const leg = normalizeLeg({
     id,
     uid,
-    isOpen: true,  // ✨ ADDED: Ensure new legs default to open
-    closed: false, // ✨ ADDED: Ensure new legs default to open
+    isOpen: true,
+    closed: false,
     ...legFields,
     openDate: legFields?.openDate ?? now,
     updatedAt: now,
@@ -371,20 +370,18 @@ export async function editLeg(uid, leg) {
       }
     );
     await dbLocal.legs.update(updated.id, { dirty: false });
-    
-    // 👇 Add this so you know it worked instantly!
     console.log(`[editLeg] Successfully saved and synced leg ${updated.id}`);
-    
   } catch (err) {
     console.error("[editLeg] push failed", err);
   }
 }
 
+// src/sync/sync.js
+
 export async function closeLeg(uid, leg, closePrice) {
   const now = Date.now();
+  const todayStr = new Date().toISOString().slice(0, 10); // Standard YYYY-MM-DD string format
 
-  // ✨ SAFELY handle closePrice: 
-  // If called from the UI without a price, keep whatever they already typed in the input box.
   let finalClosePrice = leg.closePrice; 
   if (closePrice !== undefined && closePrice !== null) {
     finalClosePrice = Number(closePrice);
@@ -393,7 +390,7 @@ export async function closeLeg(uid, leg, closePrice) {
   const updated = normalizeLeg({
     ...leg,
     closePrice: finalClosePrice, 
-    closeDate: leg.closeDate || now, // Use existing close date if they set one, otherwise now
+    closeDate: leg.closeDate || todayStr, // Use string format instead of Date.now()
     closed: true,  
     isOpen: false, 
     updatedAt: now,
@@ -419,11 +416,43 @@ export async function closeLeg(uid, leg, closePrice) {
   return updated;
 }
 
+export async function reopenLeg(uid, leg) {
+  const now = Date.now();
+
+  const updated = normalizeLeg({
+    ...leg,
+    closePrice: null, 
+    closeDate: null,
+    closed: false,  
+    isOpen: true, 
+    updatedAt: now,
+    dirty: true,
+  });
+
+  await dbLocal.legs.put(updated);
+
+  try {
+    await setDoc(
+      doc(db, "users", uid, "legs", leg.id),
+      {
+        ...updated,
+        dirty: false,
+        updatedAt: serverTimestamp(),
+      }
+    );
+    await dbLocal.legs.update(leg.id, { dirty: false });
+  } catch (err) {
+    console.error("[reopenLeg] push failed", err);
+  }
+
+  return updated;
+}
+
 export async function deleteLeg(uid, id) {
   const existing = await dbLocal.legs.get(id);
   if (!existing) return;
 
-  // 1. Create a tombstone record to mark it as deleted locally
+  // 1. Mark as deleted locally with a tombstone
   const tombstone = {
     ...existing,
     deleted: true,
@@ -433,30 +462,28 @@ export async function deleteLeg(uid, id) {
 
   await dbLocal.legs.put(tombstone);
 
-  // 2. Push the delete to Firestore
-  try {
-    await pushDelete(uid, "legs", id);
-    // 3. If successful, mark it as clean locally
-    await dbLocal.legs.update(id, { dirty: false });
-    console.log(`[deleteLeg] Successfully deleted leg ${id}`);
-  } catch (err) {
-    console.error("[deleteLeg] remote delete failed", err);
-  }
+  // 2. Add to local deletion queue so processDeletionQueue() handles it safely in batch
+  await dbLocal.deletionJobs.add({
+    uid,
+    type: "deleteLeg",
+    targetId: id,
+    createdAt: Date.now(),
+    attempts: 0
+  });
+
+  console.log(`[deleteLeg] Queued leg ${id} for deletion`);
 }
 
-// ✨ ADDED = {}: defaults to empty object so the app doesn't crash if rollFields is missing
 export async function rollLeg(uid, sourceLeg, rollFields = {}) { 
-  // close old leg
   await editLeg(uid, {
     ...sourceLeg,
     closed: true,
-    isOpen: false, // ✨ ADDED: Ensure UI knows this leg is closed!
+    isOpen: false,
     closeDate: rollFields.closeDate ?? nowMillis(),
   });
 
-  // create new leg
   await addLeg(uid, {
-    ticker: sourceLeg.ticker, // ✨ Helpful defaults: carry over base info to the new leg
+    ticker: sourceLeg.ticker,
     type: sourceLeg.type,     
     qty: sourceLeg.qty,       
     ...rollFields,
@@ -474,19 +501,13 @@ export async function forceSync(uid) {
 
   for (const c of dirtyCampaigns) {
     const latest = await dbLocal.campaigns.get(c.id);
-    if (!latest) {
-      console.warn("[forceSync] missing campaign", c.id);
-      continue;
-    }
+    if (!latest) continue;
     await updateCampaign(uid, c.id, latest);
   }
 
   for (const l of dirtyLegs) {
     const latest = await dbLocal.legs.get(l.id);
-    if (!latest) {
-      console.warn("[forceSync] missing leg", l.id);
-      continue;
-    }
+    if (!latest) continue;
     await editLeg(uid, latest);
   }
 }
@@ -495,7 +516,6 @@ export async function forceSync(uid) {
    Delete all remote (utility)
 ------------------------ */
 export async function deleteAllRemote(uid) {
-  // Define the collections you need to wipe out
   const collectionsToClear = [
     `users/${uid}/campaigns`,
     `users/${uid}/legs`
@@ -512,15 +532,13 @@ export async function deleteAllRemote(uid) {
       batch.delete(docSnapshot.ref);
       operationCount++;
 
-      // Firestore limit is 500. We commit at 400 to be perfectly safe.
       if (operationCount === 400) {
         await batch.commit();
-        batch = writeBatch(db); // start a fresh batch
+        batch = writeBatch(db);
         operationCount = 0;
       }
     }
 
-    // Commit any remaining deletes in the final batch
     if (operationCount > 0) {
       await batch.commit();
     }

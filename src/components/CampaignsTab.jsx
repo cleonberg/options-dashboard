@@ -1,3 +1,4 @@
+// src/components/CampaignsTab.jsx
 import React, { useState } from "react";
 
 import {
@@ -30,7 +31,6 @@ export default function CampaignsTab(props) {
 
   const [showEditForm, setShowEditForm] = useState(false); 
   const [saveSuccess, setSaveSuccess] = useState(false);
-
   const [isAddingLeg, setIsAddingLeg] = useState(false);
 
   // -----------------------------
@@ -112,7 +112,7 @@ export default function CampaignsTab(props) {
             <button 
               onClick={async () => {
                 await closeCampaign(uid, selectedCampaign.id);
-                setSelectedCampaignId(null); // ✨ This instantly sends them back to Dashboard!
+                setSelectedCampaignId(null);
               }}
             >
               Close
@@ -201,13 +201,15 @@ export default function CampaignsTab(props) {
         </div>
       </div>
 
-      {/* --- PERFORMANCE CHART --- */}
-      <PerformanceChart closedCampaigns={[selectedCampaign]} legs={legsForCampaign} />
+      {/* --- PERFORMANCE CHART (UPDATED PROPS) --- */}
+      <PerformanceChart 
+        campaign={selectedCampaign} 
+        legs={legsForCampaign} 
+        mode="single" 
+      />
 
       {/* --- LEGS SECTION --- */}
       <div className="card">
-        
-        {/* Header & Toggle Button (Now at the top) */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
           <h3 style={{ color: "#9fb3ff", margin: 0 }}>Campaign Legs</h3>
           <button 
@@ -222,10 +224,8 @@ export default function CampaignsTab(props) {
           </button>
         </div>
 
-        {/* Animated Expandable Wrapper (Now directly below the header) */}
         <div className={`add-leg-wrapper ${isAddingLeg ? "open" : ""}`}>
           <div className="add-leg-content">
-            {/* Added paddingBottom so it separates cleanly from the table when open */}
             <div style={{ paddingBottom: "24px" }}>
               <LegForm
                 selectedCampaign={selectedCampaign}
@@ -238,11 +238,11 @@ export default function CampaignsTab(props) {
           </div>
         </div>
         
-        {/* The Table (Now underneath the expandable form) */}
         <LegTable
           legs={legsForCampaign}
           campaigns={campaigns}
           uid={uid}
+          reloadAll={props.reloadAll}
           enableSort={false}
           enablePaging={false}
           enableFilters={false}
