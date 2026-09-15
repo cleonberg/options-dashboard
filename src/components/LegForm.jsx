@@ -15,11 +15,15 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
     return <div className="card">No campaign selected.</div>;
   }
 
+  // Determine if the currently selected type is an option
+  const isOption = !type.includes("stock");
+
   async function submit(e) {
     e.preventDefault();
 
-    if (!qty || !strike || !expiry || !openPrice) {
-      alert("Please complete all fields before adding a leg.");
+    // UPDATE: Only require strike and expiry if it is an option
+    if (!qty || !openPrice || (isOption && (!strike || !expiry))) {
+      alert("Please complete all required fields.");
       return;
     }
 
@@ -28,15 +32,13 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
       ticker: selectedCampaign.ticker,
       type,
       qty: Number(qty),
-      strike,
-      expiry,
+      // If it's a stock, save strike/expiry as null or empty string so we don't save junk data
+      strike: isOption ? strike : null,
+      expiry: isOption ? expiry : null,
       openPrice: Number(openPrice),
-
-      // ⭐ FIX: new legs should NOT be closed
       closePrice: null,
       closeDate: null,
       isOpen: true,
-
       notes,
       openDate: new Date(openDate).toISOString()
     };
@@ -79,19 +81,24 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
           onChange={e => setQty(e.target.value)}
         />
 
-        <input
-          className="input"
-          placeholder="Strike"
-          value={strike}
-          onChange={e => setStrike(e.target.value)}
-        />
+        {/* CONDITIONAL RENDER: Wrap Strike and Expiry */}
+        {isOption && (
+          <>
+            <input
+              className="input"
+              placeholder="Strike"
+              value={strike}
+              onChange={e => setStrike(e.target.value)}
+            />
 
-        <input
-          className="input"
-          type="date"
-          value={expiry}
-          onChange={e => setExpiry(e.target.value)}
-        />
+            <input
+              className="input"
+              type="date"
+              value={expiry}
+              onChange={e => setExpiry(e.target.value)}
+            />
+          </>
+        )}
 
         <input
           className="input"

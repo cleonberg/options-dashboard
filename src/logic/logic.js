@@ -417,3 +417,15 @@ export function detectStrategy(legs) {
 
   return `${totalActive}-Leg Position`;
 }
+
+// logic.js
+export function getCampaignLabel(campaign, fallbackId = "") {
+  if (!campaign) {
+    return fallbackId ? `Campaign ${fallbackId.slice(0, 4)}` : "Unassigned";
+  }
+  
+  const baseName = campaign.name || campaign.ticker || "Unnamed";
+  const dateStr = campaign.startDate ? ` (${campaign.startDate})` : "";
+  
+  return `${baseName}${dateStr}`;
+}

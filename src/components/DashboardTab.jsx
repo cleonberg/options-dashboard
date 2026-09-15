@@ -4,9 +4,12 @@ import { createCampaign } from "../sync/sync.js";
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
 import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
 import PerformanceChart from "./PerformanceChart.jsx";
+import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
 
 export default function DashboardTab({ uid, campaigns = [], legs = [], summary, onSelectCampaign }) {
   const [searchTerm, setSearchTerm] = useState("");
+  // 1. Add state to track modal visibility
+  const [showCombineModal, setShowCombineModal] = useState(false);
 
   // Filter campaigns by search term
   const filteredCampaigns = useMemo(() => {
@@ -44,18 +47,15 @@ export default function DashboardTab({ uid, campaigns = [], legs = [], summary, 
     return <div className="card">Loading dashboard…</div>;
   }
 
-  // Add this right above your component:
   function isSameId(idA, idB) {
     if (idA == null || idB == null) return false;
     return String(idA).trim().toLowerCase() === String(idB).trim().toLowerCase();
   }
 
-  // Add temporarily in DashboardTab.jsx to inspect your state:
+  // Temporary useEffect to inspect state
   useEffect(() => {
     campaigns.forEach((c) => {
       const matched = legs.filter((l) => isSameId(l.campaignId, c.id));
-      // console.log(`Campaign ${c.ticker} (ID: ${c.id}, Type: ${typeof c.id}): Found ${matched.length} legs`);
-      
       if (matched.length === 0 && legs.length > 0) {
         console.warn(`Mismatch sample leg campaignId:`, legs[0]?.campaignId, `Type:`, typeof legs[0]?.campaignId);
       }
@@ -64,8 +64,8 @@ export default function DashboardTab({ uid, campaigns = [], legs = [], summary, 
 
   return (
     <div className="dashboard-tab">
-      {/* Search Input */}
-      <div style={{ marginBottom: "16px" }}>
+      {/* 2. Header Controls: Search Input & Combine Button */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "1rem" }}>
         <input
           type="text"
           placeholder="Filter by ticker..."
@@ -82,7 +82,32 @@ export default function DashboardTab({ uid, campaigns = [], legs = [], summary, 
             boxSizing: "border-box"
           }}
         />
+        
+        <button 
+          onClick={() => setShowCombineModal(!showCombineModal)}
+          style={{
+            padding: "8px 16px",
+            backgroundColor: showCombineModal ? "#445588" : "#ffc107",
+            color: showCombineModal ? "#fff" : "#000",
+            border: "none",
+            borderRadius: "6px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            whiteSpace: "nowrap"
+          }}
+        >
+          {showCombineModal ? "Cancel" : "Combine Campaigns"}
+        </button>
       </div>
+
+      {/* 3. Conditionally Render the Modal */}
+      {showCombineModal && (
+        <CombineCampaignsModal 
+          campaigns={campaigns} 
+          uid={uid} 
+          onClose={() => setShowCombineModal(false)} 
+        />
+      )}
 
       {/* Top Metrics Grid */}
       <div style={{ marginBottom: "24px" }}>

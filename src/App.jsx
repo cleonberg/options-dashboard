@@ -128,9 +128,9 @@ export default function App() {
       case "trades":
         return (
           <AllLegsTab
-            legs={legs}
-            uid={uid}
-            // Note: reloadAll and setLegs are entirely removed!
+            campaigns={campaigns} // <-- ADD THIS LINE
+            legs={legs} 
+            uid={uid} 
           />
         );
 

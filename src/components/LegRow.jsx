@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { fmt, cashClass, computeLegPL } from "../logic/logic.js";
+// LegRow.jsx
+import React, { useState, useEffect, useMemo } from "react";
+import { fmt, cashClass, computeLegPL, getCampaignLabel } from "../logic/logic.js";
 import { editLeg, closeLeg, reopenLeg, rollLeg, deleteLeg } from "../sync/sync.js";
 
-export default function LegRow({ leg, uid, reloadAll }) {
+export default function LegRow({ leg, campaigns = [], uid, reloadAll }) {
   const [expanded, setExpanded] = useState(false);
 
   const pl = computeLegPL(leg);
+  const isOption = leg.type ? !leg.type.includes("stock") : true;
 
   function toggle() {
     setExpanded(!expanded);
@@ -16,25 +18,51 @@ export default function LegRow({ leg, uid, reloadAll }) {
     if (reloadAll) reloadAll();
   }
 
-  // Safely handles both Strings and Numbers (timestamps)
   const formatDate = (dateVal) => {
     if (!dateVal) return "";
     const d = new Date(dateVal);
     return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
   };
 
+  // 🔍 Match campaign for collapsed badge display
+  const matchedCampaign = campaigns.find((c) => c.id === leg.campaignId);
+  const campaignLabel = getCampaignLabel(matchedCampaign, leg.campaignId);
+
+  // Calculate dropdown options for reassigning campaigns in expanded view
+  const campaignOptions = campaigns
+    .filter((c) => c.ticker?.toLowerCase() === leg.ticker?.toLowerCase())
+    .map((c) => ({
+      value: c.id,
+      label: `${getCampaignLabel(c)}${c.id === leg.campaignId ? ' (Current)' : ''}`
+    }));
+
   return (
     <div className="leg-row">
 
-      {/* --- Collapsed summary row (mobile-friendly) --- */}
+      {/* --- Collapsed summary row --- */}
       <div 
         className="leg-summary" 
         onClick={toggle} 
         style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
-        <div className="leg-summary-info">
-          <strong>{leg.qty} {leg.type}</strong> {leg.strike ? `@ ${leg.strike}` : ""} 
-          <span style={{ fontSize: "12px", color: "#a1a1aa", marginLeft: "8px" }}>
+        <div className="leg-summary-info" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          
+          {/* 📁 Campaign Badge */}
+          {campaignLabel ? (
+            <span className="strategy-badge" style={{ margin: 0, backgroundColor: "#1e293b", borderColor: "#3b4e7e", color: "#38bdf8" }}>
+              📁 {campaignLabel}
+            </span>
+          ) : (
+            <span className="strategy-badge" style={{ margin: 0, opacity: 0.5 }}>
+              Unassigned
+            </span>
+          )}
+
+          <span>
+            <strong>{leg.qty} {leg.type}</strong> {leg.strike ? `@ ${leg.strike}` : ""} 
+          </span>
+
+          <span style={{ fontSize: "12px", color: "#a1a1aa" }}>
             {leg.expiry ? `(Exp: ${leg.expiry})` : ""}
           </span>
         </div>
@@ -50,6 +78,17 @@ export default function LegRow({ leg, uid, reloadAll }) {
       {/* --- Expanded detail section --- */}
       {expanded && (
         <div className="leg-details">
+
+          {/* Campaign Selector */}
+          {campaignOptions.length > 0 && (
+            <EditableField 
+              label="Campaign" 
+              value={leg.campaignId}
+              type="select"
+              options={campaignOptions}
+              onChange={v => update("campaignId", v)} 
+            />
+          )}
 
           {/* Editable fields */}
           <EditableField label="Ticker" value={leg.ticker}
@@ -74,13 +113,17 @@ export default function LegRow({ leg, uid, reloadAll }) {
             type="number"
             onChange={v => update("qty", v === "" ? null : Number(v))} />
 
-          <EditableField label="Strike" value={leg.strike}
-            type="number"
-            onChange={v => update("strike", v === "" ? null : Number(v))} />
+          {isOption && (
+            <>
+              <EditableField label="Strike" value={leg.strike}
+                type="number"
+                onChange={v => update("strike", v === "" ? null : Number(v))} />
 
-          <EditableField label="Expiry" value={leg.expiry}
-            type="date"
-            onChange={v => update("expiry", v)} />
+              <EditableField label="Expiry" value={leg.expiry}
+                type="date"
+                onChange={v => update("expiry", v)} />
+            </>
+          )}
 
           <EditableField label="Open Date" value={formatDate(leg.openDate)}
             type="date"
@@ -135,7 +178,6 @@ export default function LegRow({ leg, uid, reloadAll }) {
               </button>
             )}
             
-            {/* Delete button pushed to the right side */}
             <button 
               style={{ backgroundColor: "#5f2424", borderColor: "#8c3636", color: "#ff9f9f", marginLeft: "auto" }}
               onClick={async () => {
@@ -157,22 +199,18 @@ export default function LegRow({ leg, uid, reloadAll }) {
 
 // --- Upgraded EditableField ---
 function EditableField({ label, value, type = "text", options = [], onChange }) {
-  // 1. Hold the current typing value in local state
   const [localValue, setLocalValue] = useState(value ?? "");
 
-  // 2. If the database updates externally (sync, roll, etc.), sync the input box
   useEffect(() => {
     setLocalValue(value ?? "");
   }, [value]);
 
-  // 3. Only send the update to Dexie/Firestore if the user actually changed it
   function handleBlur() {
     if (localValue !== (value ?? "")) {
       onChange(localValue);
     }
   }
 
-  // 4. Handle direct selection changes immediately for dropdowns
   function handleSelectChange(e) {
     const newVal = e.target.value;
     setLocalValue(newVal);
@@ -184,18 +222,12 @@ function EditableField({ label, value, type = "text", options = [], onChange }) 
   return (
     <div className="detail-row">
       <label>{label}</label>
-
       {type === "textarea" ? (
-        <textarea
-          value={localValue}
-          onChange={e => setLocalValue(e.target.value)}
-          onBlur={handleBlur}
-        />
+        <textarea value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur} />
       ) : type === "select" ? (
         <select
           value={localValue}
           onChange={handleSelectChange}
-          style={{ width: "100%", padding: "8px", borderRadius: "4px", backgroundColor: "#2b2b2b", color: "#fff", border: "1px solid #444" }}
         >
           {options.map(opt => {
             const isObj = typeof opt === "object" && opt !== null;
@@ -205,12 +237,7 @@ function EditableField({ label, value, type = "text", options = [], onChange }) 
           })}
         </select>
       ) : (
-        <input
-          type={type}
-          value={localValue}
-          onChange={e => setLocalValue(e.target.value)}
-          onBlur={handleBlur}
-        />
+        <input type={type} value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur} />
       )}
     </div>
   );

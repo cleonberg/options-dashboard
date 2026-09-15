@@ -544,3 +544,36 @@ export async function deleteAllRemote(uid) {
     }
   }
 }
+
+export async function combineCampaigns(uid, sourceCampaignId, targetCampaignId) {
+  if (sourceCampaignId === targetCampaignId) {
+    throw new Error("Cannot combine a campaign into itself.");
+  }
+
+  // 1. Fetch all legs associated with the source campaign from Dexie
+  const sourceLegs = await dbLocal.legs
+    .where("campaignId")
+    .equals(sourceCampaignId)
+    .toArray();
+
+  const now = Date.now();
+
+  // 2. Reassign each leg to the target campaign
+  for (const leg of sourceLegs) {
+    const updatedLeg = {
+      ...leg,
+      campaignId: targetCampaignId,
+      updatedAt: now,
+      dirty: true,
+    };
+    
+    // Put updated leg into Dexie
+    await dbLocal.legs.put(updatedLeg);
+
+    // Optional: If you sync individual leg updates immediately, trigger that here, 
+    // or rely on your sync pipeline/forceSync to push the updated legs to Firebase.
+  }
+
+  // 3. Delete or archive the source campaign
+  await deleteCampaign(uid, sourceCampaignId);
+}
