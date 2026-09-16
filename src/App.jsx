@@ -47,6 +47,10 @@ export default function App() {
 
   const [syncStatus, setSyncStatus] = useState("synced");
   const [lastSync, setLastSync] = useState(null);
+  
+  const [dashboardSearchTerm, setDashboardSearchTerm] = useState("");
+  const [dashboardStartDateFilter, setDashboardStartDateFilter] = useState("2026-03-01");
+  const [dashboardEndDateFilter, setDashboardEndDateFilter] = useState("");
 
   // ---------- Derived State ----------
   // Automatically recalculates whenever campaigns or legs change
@@ -122,6 +126,12 @@ export default function App() {
             campaigns={campaigns}
             legs={legs}
             onSelectCampaign={handleSelectCampaign}
+            searchTerm={dashboardSearchTerm}
+            setSearchTerm={setDashboardSearchTerm}
+            startDateFilter={dashboardStartDateFilter}
+            setStartDateFilter={setDashboardStartDateFilter}
+            endDateFilter={dashboardEndDateFilter}
+            setEndDateFilter={setDashboardEndDateFilter}
           />
         );
 

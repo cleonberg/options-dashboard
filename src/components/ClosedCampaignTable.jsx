@@ -72,13 +72,27 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
             const summary = computeCampaignSummary(c, legsForCampaign);
             const strategy = detectStrategy(legsForCampaign);
 
+            // 🛠️ Generate multiline tooltip text for the legs in this campaign
+            const tooltipText = legsForCampaign.length > 0 
+              ? `Campaign Legs (${legsForCampaign.length}):\n` + legsForCampaign.map(l => {
+                  const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
+                  const strikeStr = l.strike ? ` @ ${l.strike}` : "";
+                  const expStr = l.expiry ? ` (Exp: ${l.expiry})` : "";
+                  return `${status} | ${l.qty} ${l.type}${strikeStr}${expStr}`;
+                }).join("\n")
+              : "No legs in this campaign";
+
             return (
-              <tr key={c.id} onClick={() => onSelect(c.id)}>
+              <tr 
+                key={c.id} 
+                onClick={() => onSelect(c.id)}
+                title={tooltipText} // <-- Native Tooltip added to the entire row
+                style={{ cursor: "pointer" }}
+              >
                 <td>
                   <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
                   <span className="strategy-badge">{strategy}</span>
                 </td>
-                {/* Hidden on small screens */}
                 <td className="hide-mobile">{c.startDate || "-"}</td>
                 <td>{c.endDate || "-"}</td>
                 <td className={cashClass(summary.totalPL)}>

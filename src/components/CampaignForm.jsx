@@ -48,7 +48,6 @@ export default function CampaignForm({ initialData, onSubmit, onCancel }) {
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
             placeholder="e.g. AAPL"
-            autoFocus
             style={{ padding: "6px", width: "100%", maxWidth: "200px" }}
           />
         </div>

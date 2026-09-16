@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { fmt, cashClass, computeLegPL, getCampaignLabel } from "../logic/logic.js";
 import { editLeg, closeLeg, reopenLeg, rollLeg, deleteLeg } from "../sync/sync.js";
 
-export default function LegRow({ leg, campaigns = [], uid, reloadAll }) {
+export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadAll }) {
   const [expanded, setExpanded] = useState(false);
 
   const pl = computeLegPL(leg);
@@ -28,6 +28,23 @@ export default function LegRow({ leg, campaigns = [], uid, reloadAll }) {
   const matchedCampaign = campaigns.find((c) => c.id === leg.campaignId);
   const campaignLabel = getCampaignLabel(matchedCampaign, leg.campaignId);
 
+  // 🛠️ Generate multiline tooltip text for all related legs
+  const tooltipText = useMemo(() => {
+    if (!leg.campaignId || !allLegs.length) return "";
+
+    const relatedLegs = allLegs.filter(l => l.campaignId === leg.campaignId);
+    if (relatedLegs.length === 0) return "";
+
+    const legStrings = relatedLegs.map(l => {
+      const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
+      const strikeStr = l.strike ? ` @ ${l.strike}` : "";
+      const expStr = l.expiry ? ` (Exp: ${l.expiry})` : "";
+      return `${status} | ${l.qty} ${l.type}${strikeStr}${expStr}`;
+    });
+
+    return `Campaign Legs (${relatedLegs.length}):\n` + legStrings.join("\n");
+  }, [leg.campaignId, allLegs]);
+
   // Calculate dropdown options for reassigning campaigns in expanded view
   const campaignOptions = campaigns
     .filter((c) => c.ticker?.toLowerCase() === leg.ticker?.toLowerCase())
@@ -36,6 +53,10 @@ export default function LegRow({ leg, campaigns = [], uid, reloadAll }) {
       label: `${getCampaignLabel(c)}${c.id === leg.campaignId ? ' (Current)' : ''}`
     }));
 
+  // Helper strings for prices & dates in summary view
+  const openDateStr = formatDate(leg.openDate);
+  const closeDateStr = formatDate(leg.closeDate);
+
   return (
     <div className="leg-row">
 
@@ -43,28 +64,54 @@ export default function LegRow({ leg, campaigns = [], uid, reloadAll }) {
       <div 
         className="leg-summary" 
         onClick={toggle} 
-        style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+        style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px" }}
       >
-        <div className="leg-summary-info" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+        <div className="leg-summary-info" style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           
-          {/* 📁 Campaign Badge */}
-          {campaignLabel ? (
-            <span className="strategy-badge" style={{ margin: 0, backgroundColor: "#1e293b", borderColor: "#3b4e7e", color: "#38bdf8" }}>
-              📁 {campaignLabel}
-            </span>
-          ) : (
-            <span className="strategy-badge" style={{ margin: 0, opacity: 0.5 }}>
-              Unassigned
-            </span>
-          )}
+          {/* Main Line: Badge, Qty/Type, Strike, Expiry */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            {campaignLabel ? (
+              <span 
+                className="strategy-badge" 
+                title={tooltipText} 
+                style={{ 
+                  margin: 0, 
+                  backgroundColor: "#1e293b", 
+                  borderColor: "#3b4e7e", 
+                  color: "#38bdf8",
+                  cursor: "help" 
+                }}
+              >
+                📁 {campaignLabel}
+              </span>
+            ) : (
+              <span className="strategy-badge" style={{ margin: 0, opacity: 0.5 }}>
+                Unassigned
+              </span>
+            )}
 
-          <span>
-            <strong>{leg.qty} {leg.type}</strong> {leg.strike ? `@ ${leg.strike}` : ""} 
-          </span>
+            <span>
+              <strong>{leg.qty} {leg.type}</strong> {leg.strike ? `@ ${leg.strike}` : ""} 
+            </span>
 
-          <span style={{ fontSize: "12px", color: "#a1a1aa" }}>
-            {leg.expiry ? `(Exp: ${leg.expiry})` : ""}
-          </span>
+            <span style={{ fontSize: "12px", color: "#a1a1aa" }}>
+              {leg.expiry ? `(Exp: ${leg.expiry})` : ""}
+            </span>
+          </div>
+
+          {/* ⭐ Secondary Line: Prices & Dates */}
+          <div style={{ fontSize: "12px", color: "#94a3b8", display: "flex", gap: "14px", flexWrap: "wrap" }}>
+            <span>
+              <strong>Price:</strong> {leg.openPrice != null ? fmt(leg.openPrice) : "-"}
+              {leg.closePrice != null ? ` ➔ ${fmt(leg.closePrice)}` : ""}
+            </span>
+
+            <span>
+              <strong>Dates:</strong> {openDateStr || "N/A"}
+              {closeDateStr ? ` ➔ ${closeDateStr}` : ""}
+            </span>
+          </div>
+
         </div>
         
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
