@@ -1,15 +1,15 @@
 import React from "react";
 
-export default function DaysLeftProgressBar({ daysLeft, maxDays = 45 }) {
+export default function DaysLeftProgressBar({ daysLeft, maxDays = 7 }) {
   if (daysLeft == null || isNaN(daysLeft)) return <span>-</span>;
 
   const validDays = Math.max(0, daysLeft);
   const percentage = Math.min(100, Math.max(0, (validDays / maxDays) * 100));
 
   let colorClass = "progress-normal";
-  if (validDays <= 7) {
+  if (validDays <= 3) {
     colorClass = "progress-danger";
-  } else if (validDays <= 21) {
+  } else if (validDays <= 1) {
     colorClass = "progress-warning";
   }
 
@@ -22,7 +22,7 @@ export default function DaysLeftProgressBar({ daysLeft, maxDays = 45 }) {
         />
       </div>
       <span style={{ fontSize: "12px", minWidth: "42px", fontWeight: 500 }}>
-        {daysLeft <= 0 ? "Expired" : `${daysLeft}d`}
+        {daysLeft < 0 ? "Expired" : `${daysLeft}d`}
       </span>
     </div>
   );

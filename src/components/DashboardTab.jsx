@@ -6,14 +6,13 @@ import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
 import PerformanceChart from "./PerformanceChart.jsx";
 import CashFlowChart from "./CashFlowChart.jsx";
 import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
+import CampaignForm from "./CampaignForm.jsx";
 
-// Safe string/number ID comparison
 function isSameId(idA, idB) {
   if (idA == null || idB == null) return false;
   return String(idA).trim().toLowerCase() === String(idB).trim().toLowerCase();
 }
 
-// Helper to format Date object into standard HTML input string YYYY-MM-DD
 function toISODateStr(d) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -27,6 +26,7 @@ export default function DashboardTab({
   legs = [],
   summary,
   onSelectCampaign,
+  onAddCampaign,
   searchTerm = "",
   setSearchTerm,
   startDateFilter = "",
@@ -35,9 +35,9 @@ export default function DashboardTab({
   setEndDateFilter
 }) {
   const [showCombineModal, setShowCombineModal] = useState(false);
+  const [isAddingCampaign, setIsAddingCampaign] = useState(false);
   const [activeChart, setActiveChart] = useState("cashflow");
 
-  // ⭐ Quick Filter Handler
   const handleQuickFilter = (preset) => {
     const now = new Date();
     let start = "";
@@ -64,7 +64,6 @@ export default function DashboardTab({
     if (setEndDateFilter) setEndDateFilter(end);
   };
 
-  // Filter campaigns by search term AND start date range
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((c) => {
       if (searchTerm.trim()) {
@@ -101,7 +100,6 @@ export default function DashboardTab({
     [filteredCampaigns]
   );
 
-  // Dynamic summary recalculation based on active filters
   const displaySummary = useMemo(() => {
     if (!searchTerm.trim() && !startDateFilter && !endDateFilter) {
       return (
@@ -143,7 +141,6 @@ export default function DashboardTab({
     closed.length,
   ]);
 
-  // Calculate Net Premium specifically for the Current Week
   const currentWeekPremium = useMemo(() => {
     const now = new Date();
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
@@ -188,21 +185,7 @@ export default function DashboardTab({
       {/* Top Action Bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
         <h3 style={{ margin: 0 }}>Dashboard</h3>
-        <button
-          onClick={() => setShowCombineModal(true)}
-          style={{ padding: "6px 12px", backgroundColor: "#ffc107", color: "#000", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" }}
-        >
-          Combine Campaigns
-        </button>
       </div>
-
-      {showCombineModal && (
-        <CombineCampaignsModal
-          campaigns={campaigns}
-          uid={uid}
-          onClose={() => setShowCombineModal(false)}
-        />
-      )}
 
       {/* Search & Date Filter Bar */}
       <div style={{ marginBottom: "20px" }}>
@@ -250,7 +233,7 @@ export default function DashboardTab({
           )}
         </div>
 
-        {/* ⭐ Quick Preset Buttons */}
+        {/* Quick Presets */}
         <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "10px", flexWrap: "wrap" }}>
           <span style={{ fontSize: "12px", color: "#9fb3ff", fontWeight: "bold" }}>Quick Presets:</span>
           <button type="button" className="secondary" onClick={() => handleQuickFilter("thisWeek")} style={{ padding: "4px 8px", fontSize: "12px", cursor: "pointer" }}>This Week</button>
@@ -261,7 +244,7 @@ export default function DashboardTab({
         </div>
       </div>
 
-      {/* Top Metrics Cards Grid */}
+      {/* Metrics Cards Grid */}
       <div style={{ marginBottom: "24px" }}>
         <div style={{ fontSize: "12px", color: "#9fb3ff", marginBottom: "8px", fontWeight: "bold" }}>
           {hasActiveFilters ? "Metrics (Filtered):" : "All Campaigns Metrics:"}
@@ -314,7 +297,7 @@ export default function DashboardTab({
         </div>
       </div>
 
-      {/* Chart Toggle Header */}
+      {/* Performance Overview Chart Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", marginTop: "24px" }}>
         <h3 style={{ color: "#9fb3ff", margin: 0 }}>Performance Overview</h3>
         <div style={{ display: "flex", gap: "8px" }}>
@@ -354,7 +337,6 @@ export default function DashboardTab({
         </div>
       </div>
 
-      {/* ⭐ Pass date filters to CashFlowChart */}
       {activeChart === "cashflow" ? (
         <CashFlowChart
           legs={legs}
@@ -366,13 +348,83 @@ export default function DashboardTab({
         <PerformanceChart closedCampaigns={closed} legs={legs} mode="dashboard" />
       )}
 
-      {/* Active Campaigns */}
+      {/* Active Campaigns Section */}
       <section style={{ marginBottom: "24px", marginTop: "24px" }}>
-        <h3 style={{ color: "#9fb3ff" }}>Active Campaigns ({open.length})</h3>
+        
+        {/* Section Header with Action Buttons */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <h3 style={{ color: "#9fb3ff", margin: 0 }}>Active Campaigns ({open.length})</h3>
+          
+          <div style={{ display: "flex", gap: "12px" }}>
+            <button 
+              onClick={() => {
+                setIsAddingCampaign(!isAddingCampaign);
+                if (!isAddingCampaign) setShowCombineModal(false); // Close combine if open
+              }}
+              style={{ 
+                backgroundColor: isAddingCampaign ? "transparent" : "#3182ce",
+                border: isAddingCampaign ? "1px solid #9fb3ff" : "none",
+                color: isAddingCampaign ? "#9fb3ff" : "#fff",
+                padding: "6px 12px",
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              {isAddingCampaign ? "Cancel" : "+ Add Campaign"}
+            </button>
+
+            <button
+              onClick={() => {
+                setShowCombineModal(!showCombineModal);
+                if (!showCombineModal) setIsAddingCampaign(false); // Close add campaign if open
+              }}
+              style={{ 
+                padding: "6px 12px", 
+                backgroundColor: showCombineModal ? "transparent" : "#ffc107", 
+                color: showCombineModal ? "#ffc107" : "#000", 
+                border: showCombineModal ? "1px solid #ffc107" : "none", 
+                borderRadius: "4px", 
+                cursor: "pointer", 
+                fontWeight: "bold" 
+              }}
+            >
+              {showCombineModal ? "Cancel" : "Combine Campaigns"}
+            </button>
+          </div>
+        </div>
+
+        {/* Animated Expandable Add Campaign Form */}
+        <div className={`add-leg-wrapper ${isAddingCampaign ? "open" : ""}`}>
+          <div className="add-leg-content">
+            <div style={{ paddingBottom: "24px" }}>
+              <CampaignForm 
+                onSubmit={(campaignData) => {
+                  if (onAddCampaign) onAddCampaign(campaignData); 
+                  setIsAddingCampaign(false); 
+                }}
+                onCancel={() => setIsAddingCampaign(false)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Animated Expandable Combine Campaigns Modal */}
+        <div className={`add-leg-wrapper ${showCombineModal ? "open" : ""}`}>
+          <div className="add-leg-content">
+            <div style={{ paddingBottom: "24px" }}>
+              <CombineCampaignsModal
+                campaigns={campaigns}
+                uid={uid}
+                onClose={() => setShowCombineModal(false)}
+              />
+            </div>
+          </div>
+        </div>
+
         <OpenCampaignTable campaigns={open} legs={legs} onSelect={onSelectCampaign} />
       </section>
 
-      {/* Closed Campaigns */}
+      {/* Closed Campaigns Section */}
       <section>
         <h3 style={{ color: "#9fb3ff" }}>Closed Campaigns ({closed.length})</h3>
         <ClosedCampaignTable campaigns={closed} legs={legs} onSelect={onSelectCampaign} />

@@ -49,7 +49,7 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null);
   
   const [dashboardSearchTerm, setDashboardSearchTerm] = useState("");
-  const [dashboardStartDateFilter, setDashboardStartDateFilter] = useState("2026-03-01");
+  const [dashboardStartDateFilter, setDashboardStartDateFilter] = useState("2026-01-01");
   const [dashboardEndDateFilter, setDashboardEndDateFilter] = useState("");
 
   // ---------- Derived State ----------

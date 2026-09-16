@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { fmt, cashClass, computeCampaignSummary, detectStrategy } from "../logic/logic.js";
+import { 
+  fmt, 
+  cashClass, 
+  computeCampaignSummary, 
+  detectStrategy,
+  getCampaignDuration 
+} from "../logic/logic.js";
+import DurationProgressBar from "./DurationProgressBar.jsx"; // <-- Import here
 
 export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
   const [sortConfig, setSortConfig] = useState({ field: "endDate", direction: "desc" });
@@ -15,6 +22,9 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
     return [...campaigns].sort((a, b) => {
       let aVal, bVal;
 
+      const legsA = legs.filter((l) => String(l.campaignId) === String(a.id));
+      const legsB = legs.filter((l) => String(l.campaignId) === String(b.id));
+
       if (sortConfig.field === "ticker") {
         aVal = a.ticker || "";
         bVal = b.ticker || "";
@@ -23,12 +33,13 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
           : bVal.localeCompare(aVal);
       }
 
-      if (sortConfig.field === "startDate" || sortConfig.field === "endDate") {
-        aVal = new Date(a[sortConfig.field] || 0).getTime();
-        bVal = new Date(b[sortConfig.field] || 0).getTime();
+      if (sortConfig.field === "endDate") {
+        aVal = new Date(a.endDate || 0).getTime();
+        bVal = new Date(b.endDate || 0).getTime();
+      } else if (sortConfig.field === "duration") {
+        aVal = getCampaignDuration(legsA);
+        bVal = getCampaignDuration(legsB);
       } else if (sortConfig.field === "totalPL") {
-        const legsA = legs.filter(l => l.campaignId === a.id);
-        const legsB = legs.filter(l => l.campaignId === b.id);
         aVal = computeCampaignSummary(a, legsA).totalPL || 0;
         bVal = computeCampaignSummary(b, legsB).totalPL || 0;
       }
@@ -53,10 +64,10 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
             {/* Hidden on small screens */}
             <th 
               className="hide-mobile" 
-              onClick={() => handleSort("startDate")} 
+              onClick={() => handleSort("duration")} 
               style={{ cursor: "pointer", userSelect: "none" }}
             >
-              Opened{getSortIndicator("startDate")}
+              Duration{getSortIndicator("duration")}
             </th>
             <th onClick={() => handleSort("endDate")} style={{ cursor: "pointer", userSelect: "none" }}>
               Closed{getSortIndicator("endDate")}
@@ -68,11 +79,11 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
         </thead>
         <tbody>
           {sortedCampaigns.map(c => {
-            const legsForCampaign = legs.filter(l => l.campaignId === c.id);
+            const legsForCampaign = legs.filter(l => String(l.campaignId) === String(c.id));
             const summary = computeCampaignSummary(c, legsForCampaign);
             const strategy = detectStrategy(legsForCampaign);
+            const durationDays = getCampaignDuration(legsForCampaign);
 
-            // 🛠️ Generate multiline tooltip text for the legs in this campaign
             const tooltipText = legsForCampaign.length > 0 
               ? `Campaign Legs (${legsForCampaign.length}):\n` + legsForCampaign.map(l => {
                   const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
@@ -86,14 +97,21 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
               <tr 
                 key={c.id} 
                 onClick={() => onSelect(c.id)}
-                title={tooltipText} // <-- Native Tooltip added to the entire row
+                title={tooltipText}
                 style={{ cursor: "pointer" }}
               >
                 <td>
-                  <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
-                  <span className="strategy-badge">{strategy}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
+                    <span className="strategy-badge">{strategy}</span>
+                  </div>
                 </td>
-                <td className="hide-mobile">{c.startDate || "-"}</td>
+                
+                {/* Render the Duration Progress Bar here */}
+                <td className="hide-mobile">
+                  <DurationProgressBar durationDays={durationDays} />
+                </td>
+
                 <td>{c.endDate || "-"}</td>
                 <td className={cashClass(summary.totalPL)}>
                   {fmt(summary.totalPL)}

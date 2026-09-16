@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { combineCampaigns } from "../sync/sync.js";
+import { getCampaignLabel } from "../logic/logic.js"; // <-- 1. Import the function
 
 export default function CombineCampaignsModal({ campaigns, uid, onClose }) {
   const [sourceId, setSourceId] = useState("");
@@ -69,7 +70,8 @@ export default function CombineCampaignsModal({ campaigns, uid, onClose }) {
             <option value="">-- Select Campaign --</option>
             {sortedCampaigns.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.ticker} (Opened: {c.startDate}) - {c.status}
+                {/* 2. Use the helper function here */}
+                {getCampaignLabel(c, c.id)} - {c.status}
               </option>
             ))}
           </select>
@@ -88,7 +90,8 @@ export default function CombineCampaignsModal({ campaigns, uid, onClose }) {
             <option value="">-- Select Campaign --</option>
             {sortedCampaigns.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.ticker} (Opened: {c.startDate}) - {c.status}
+                {/* 3. Use the helper function here too */}
+                {getCampaignLabel(c, c.id)} - {c.status}
               </option>
             ))}
           </select>

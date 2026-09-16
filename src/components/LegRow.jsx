@@ -1,10 +1,25 @@
-// LegRow.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import { fmt, cashClass, computeLegPL, getCampaignLabel } from "../logic/logic.js";
-import { editLeg, closeLeg, reopenLeg, rollLeg, deleteLeg } from "../sync/sync.js";
+import { editLeg, reopenLeg, rollLeg, deleteLeg } from "../sync/sync.js";
 
 export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadAll }) {
   const [expanded, setExpanded] = useState(false);
+
+  // 'close' | 'roll' | null
+  const [activeAction, setActiveAction] = useState(null);
+
+  // Close Form State
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [closeDate, setCloseDate] = useState(todayStr);
+  const [closePrice, setClosePrice] = useState("");
+
+  // Roll Form State
+  const [rollDate, setRollDate] = useState(todayStr);
+  const [rollClosePrice, setRollClosePrice] = useState("");
+  const [rollNewQty, setRollNewQty] = useState(leg.qty ?? 1);
+  const [rollNewStrike, setRollNewStrike] = useState(leg.strike ?? "");
+  const [rollNewExpiry, setRollNewExpiry] = useState(leg.expiry ?? "");
+  const [rollNewOpenPrice, setRollNewOpenPrice] = useState("");
 
   const pl = computeLegPL(leg);
   const isOption = leg.type ? !leg.type.includes("stock") : true;
@@ -28,14 +43,13 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
   const matchedCampaign = campaigns.find((c) => c.id === leg.campaignId);
   const campaignLabel = getCampaignLabel(matchedCampaign, leg.campaignId);
 
-  // 🛠️ Generate multiline tooltip text for all related legs
+  // 🛠️ Tooltip text
   const tooltipText = useMemo(() => {
     if (!leg.campaignId || !allLegs.length) return "";
-
-    const relatedLegs = allLegs.filter(l => l.campaignId === leg.campaignId);
+    const relatedLegs = allLegs.filter((l) => l.campaignId === leg.campaignId);
     if (relatedLegs.length === 0) return "";
 
-    const legStrings = relatedLegs.map(l => {
+    const legStrings = relatedLegs.map((l) => {
       const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
       const strikeStr = l.strike ? ` @ ${l.strike}` : "";
       const expStr = l.expiry ? ` (Exp: ${l.expiry})` : "";
@@ -45,41 +59,89 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
     return `Campaign Legs (${relatedLegs.length}):\n` + legStrings.join("\n");
   }, [leg.campaignId, allLegs]);
 
-  // Calculate dropdown options for reassigning campaigns in expanded view
   const campaignOptions = campaigns
     .filter((c) => c.ticker?.toLowerCase() === leg.ticker?.toLowerCase())
     .map((c) => ({
       value: c.id,
-      label: `${getCampaignLabel(c)}${c.id === leg.campaignId ? ' (Current)' : ''}`
+      label: `${getCampaignLabel(c)}${c.id === leg.campaignId ? " (Current)" : ""}`,
     }));
 
-  // Helper strings for prices & dates in summary view
   const openDateStr = formatDate(leg.openDate);
   const closeDateStr = formatDate(leg.closeDate);
 
+  // Opens Close Form
+  const handleOpenCloseForm = () => {
+    setCloseDate(new Date().toISOString().slice(0, 10));
+    setClosePrice("");
+    setActiveAction("close");
+  };
+
+  // Opens Roll Form
+  const handleOpenRollForm = () => {
+    setRollDate(new Date().toISOString().slice(0, 10));
+    setRollClosePrice("");
+    setRollNewQty(leg.qty ?? 1);
+    setRollNewStrike(leg.strike ?? "");
+    setRollNewExpiry(leg.expiry ?? "");
+    setRollNewOpenPrice("");
+    setActiveAction("roll");
+  };
+
+  // Confirm Close Action
+  const handleConfirmClose = async (e) => {
+    e.preventDefault();
+    await editLeg(uid, {
+      ...leg,
+      isOpen: false,
+      closeDate: closeDate,
+      closePrice: closePrice === "" ? null : Number(closePrice),
+    });
+    setActiveAction(null);
+    if (reloadAll) reloadAll();
+  };
+
+  // Confirm Roll Action
+  const handleConfirmRoll = async (e) => {
+    e.preventDefault();
+    await rollLeg(uid, leg, {
+      closeDate: rollDate,
+      closePrice: rollClosePrice === "" ? null : Number(rollClosePrice),
+      rollDate: rollDate,
+      openPrice: rollNewOpenPrice === "" ? null : Number(rollNewOpenPrice),
+      qty: rollNewQty === "" ? leg.qty : Number(rollNewQty),
+      strike: isOption && rollNewStrike !== "" ? Number(rollNewStrike) : leg.strike,
+      expiry: isOption ? rollNewExpiry : leg.expiry,
+    });
+    setActiveAction(null);
+    if (reloadAll) reloadAll();
+  };
+
   return (
     <div className="leg-row">
-
       {/* --- Collapsed summary row --- */}
-      <div 
-        className="leg-summary" 
-        onClick={toggle} 
-        style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px" }}
+      <div
+        className="leg-summary"
+        onClick={toggle}
+        style={{
+          cursor: "pointer",
+          display: "flex",
+          justify: "space-between",
+          alignItems: "center",
+          padding: "8px 12px",
+        }}
       >
         <div className="leg-summary-info" style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          
-          {/* Main Line: Badge, Qty/Type, Strike, Expiry */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             {campaignLabel ? (
-              <span 
-                className="strategy-badge" 
-                title={tooltipText} 
-                style={{ 
-                  margin: 0, 
-                  backgroundColor: "#1e293b", 
-                  borderColor: "#3b4e7e", 
+              <span
+                className="strategy-badge"
+                title={tooltipText}
+                style={{
+                  margin: 0,
+                  backgroundColor: "#1e293b",
+                  borderColor: "#3b4e7e",
                   color: "#38bdf8",
-                  cursor: "help" 
+                  cursor: "help",
                 }}
               >
                 📁 {campaignLabel}
@@ -91,7 +153,10 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
             )}
 
             <span>
-              <strong>{leg.qty} {leg.type}</strong> {leg.strike ? `@ ${leg.strike}` : ""} 
+              <strong>
+                {leg.qty} {leg.type}
+              </strong>{" "}
+              {leg.strike ? `@ ${leg.strike}` : ""}
             </span>
 
             <span style={{ fontSize: "12px", color: "#a1a1aa" }}>
@@ -99,7 +164,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
             </span>
           </div>
 
-          {/* ⭐ Secondary Line: Prices & Dates */}
           <div style={{ fontSize: "12px", color: "#94a3b8", display: "flex", gap: "14px", flexWrap: "wrap" }}>
             <span>
               <strong>Price:</strong> {leg.openPrice != null ? fmt(leg.openPrice) : "-"}
@@ -111,9 +175,8 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
               {closeDateStr ? ` ➔ ${closeDateStr}` : ""}
             </span>
           </div>
-
         </div>
-        
+
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
           <div className={`leg-summary-pl ${pl == null ? "" : cashClass(pl)}`}>
             {pl == null ? "" : fmt(pl)}
@@ -125,24 +188,20 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
       {/* --- Expanded detail section --- */}
       {expanded && (
         <div className="leg-details">
-
-          {/* Campaign Selector */}
           {campaignOptions.length > 0 && (
-            <EditableField 
-              label="Campaign" 
+            <EditableField
+              label="Campaign"
               value={leg.campaignId}
               type="select"
               options={campaignOptions}
-              onChange={v => update("campaignId", v)} 
+              onChange={(v) => update("campaignId", v)}
             />
           )}
 
-          {/* Editable fields */}
-          <EditableField label="Ticker" value={leg.ticker}
-            onChange={v => update("ticker", v)} />
+          <EditableField label="Ticker" value={leg.ticker} onChange={(v) => update("ticker", v)} />
 
-          <EditableField 
-            label="Type" 
+          <EditableField
+            label="Type"
             value={leg.type}
             type="select"
             options={[
@@ -152,92 +211,214 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
               { value: "buy_call", label: "Long Call" },
               { value: "buy_stock", label: "Long Stock" },
               { value: "sell_stock", label: "Short Stock" },
-            ]} 
-            onChange={v => update("type", v)} 
+            ]}
+            onChange={(v) => update("type", v)}
           />
 
-          <EditableField label="Qty" value={leg.qty}
+          <EditableField
+            label="Qty"
+            value={leg.qty}
             type="number"
-            onChange={v => update("qty", v === "" ? null : Number(v))} />
+            onChange={(v) => update("qty", v === "" ? null : Number(v))}
+          />
 
           {isOption && (
             <>
-              <EditableField label="Strike" value={leg.strike}
+              <EditableField
+                label="Strike"
+                value={leg.strike}
                 type="number"
-                onChange={v => update("strike", v === "" ? null : Number(v))} />
+                onChange={(v) => update("strike", v === "" ? null : Number(v))}
+              />
 
-              <EditableField label="Expiry" value={leg.expiry}
-                type="date"
-                onChange={v => update("expiry", v)} />
+              <EditableField label="Expiry" value={leg.expiry} type="date" onChange={(v) => update("expiry", v)} />
             </>
           )}
 
-          <EditableField label="Open Date" value={formatDate(leg.openDate)}
+          <EditableField
+            label="Open Date"
+            value={formatDate(leg.openDate)}
             type="date"
-            onChange={v => update("openDate", v)} />
+            onChange={(v) => update("openDate", v)}
+          />
 
-          <EditableField label="Close Date" value={formatDate(leg.closeDate)}
-            type="date"
-            onChange={v => update("closeDate", v || null)} />
-
-          <EditableField label="Open Price" value={leg.openPrice}
+          <EditableField
+            label="Open Price"
+            value={leg.openPrice}
             type="number"
-            onChange={v => update("openPrice", v === "" ? null : Number(v))} />
+            onChange={(v) => update("openPrice", v === "" ? null : Number(v))}
+          />
 
-          <EditableField label="Close Price" value={leg.closePrice ?? ""}
-            type="number"
-            onChange={v => update("closePrice", v === "" ? null : Number(v))} />
+          {/* 🔒 Close Date & Close Price are strictly hidden UNTIL the leg is closed */}
+          {!leg.isOpen && (
+            <>
+              <EditableField
+                label="Close Date"
+                value={formatDate(leg.closeDate)}
+                type="date"
+                onChange={(v) => update("closeDate", v || null)}
+              />
 
-          <EditableField label="Notes" value={leg.notes}
-            type="textarea"
-            onChange={v => update("notes", v)} />
+              <EditableField
+                label="Close Price"
+                value={leg.closePrice ?? ""}
+                type="number"
+                onChange={(v) => update("closePrice", v === "" ? null : Number(v))}
+              />
+            </>
+          )}
 
-          {/* Actions */}
-          <div className="leg-actions" style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
-            {leg.isOpen ? (
-              <>
-                <button 
+          <EditableField label="Notes" value={leg.notes} type="textarea" onChange={(v) => update("notes", v)} />
+
+          {/* Inline Action Form: CLOSE */}
+          {activeAction === "close" && (
+            <form onSubmit={handleConfirmClose} className="action-form">
+              <h4>Close Leg</h4>
+              <div className="action-form-grid">
+                <div>
+                  <label>Close Date</label>
+                  <input
+                    type="date"
+                    value={closeDate}
+                    onChange={(e) => setCloseDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label>Close Price</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={closePrice}
+                    onChange={(e) => setClosePrice(e.target.value)}
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="action-form-buttons">
+                <button type="submit" className="btn-confirm">
+                  Confirm Close
+                </button>
+                <button type="button" onClick={() => setActiveAction(null)} className="btn-cancel">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Inline Action Form: ROLL */}
+          {activeAction === "roll" && (
+            <form onSubmit={handleConfirmRoll} className="action-form">
+              <h4>Roll Leg</h4>
+              <div className="action-form-grid">
+                <div>
+                  <label>Roll / Close Date</label>
+                  <input
+                    type="date"
+                    value={rollDate}
+                    onChange={(e) => setRollDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label>Current Leg Close Price</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={rollClosePrice}
+                    onChange={(e) => setRollClosePrice(e.target.value)}
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+                <div>
+                  <label>New Leg Qty</label>
+                  <input
+                    type="number"
+                    value={rollNewQty}
+                    onChange={(e) => setRollNewQty(e.target.value)}
+                    required
+                  />
+                </div>
+                {isOption && (
+                  <>
+                    <div>
+                      <label>New Strike</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={rollNewStrike}
+                        onChange={(e) => setRollNewStrike(e.target.value)}
+                        placeholder="Strike"
+                      />
+                    </div>
+                    <div>
+                      <label>New Expiry</label>
+                      <input
+                        type="date"
+                        value={rollNewExpiry}
+                        onChange={(e) => setRollNewExpiry(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+                <div>
+                  <label>New Leg Open Price</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={rollNewOpenPrice}
+                    onChange={(e) => setRollNewOpenPrice(e.target.value)}
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="action-form-buttons">
+                <button type="submit" className="btn-confirm">
+                  Confirm Roll
+                </button>
+                <button type="button" onClick={() => setActiveAction(null)} className="btn-cancel">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Action Buttons */}
+          {!activeAction && (
+            <div className="leg-actions" style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
+              {leg.isOpen ? (
+                <>
+                  <button onClick={handleOpenCloseForm}>Close</button>
+                  <button onClick={handleOpenRollForm}>Roll</button>
+                </>
+              ) : (
+                <button
                   onClick={async () => {
-                    await closeLeg(uid, leg);
+                    await reopenLeg(uid, leg);
                     if (reloadAll) reloadAll();
                   }}
+                  style={{ backgroundColor: "#2b4c7e", borderColor: "#3182ce", color: "#9fb3ff" }}
                 >
-                  Close
+                  Reopen
                 </button>
-                <button 
-                  onClick={async () => {
-                    await rollLeg(uid, leg);
-                    if (reloadAll) reloadAll();
-                  }}
-                >
-                  Roll
-                </button>
-              </>
-            ) : (
-              <button 
+              )}
+
+              <button
+                style={{ backgroundColor: "#5f2424", borderColor: "#8c3636", color: "#ff9f9f", marginLeft: "auto" }}
                 onClick={async () => {
-                  await reopenLeg(uid, leg);
-                  if (reloadAll) reloadAll();
+                  if (window.confirm("Are you sure you want to delete this leg entirely?")) {
+                    await deleteLeg(uid, leg.id);
+                    if (reloadAll) reloadAll();
+                  }
                 }}
-                style={{ backgroundColor: "#2b4c7e", borderColor: "#3182ce", color: "#9fb3ff" }}
               >
-                Reopen
+                Delete
               </button>
-            )}
-            
-            <button 
-              style={{ backgroundColor: "#5f2424", borderColor: "#8c3636", color: "#ff9f9f", marginLeft: "auto" }}
-              onClick={async () => {
-                if(window.confirm("Are you sure you want to delete this leg entirely?")) {
-                  await deleteLeg(uid, leg.id);
-                  if (reloadAll) reloadAll();
-                }
-              }}
-            >
-              Delete
-            </button>
-          </div>
-
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -270,21 +451,22 @@ function EditableField({ label, value, type = "text", options = [], onChange }) 
     <div className="detail-row">
       <label>{label}</label>
       {type === "textarea" ? (
-        <textarea value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur} />
+        <textarea value={localValue} onChange={(e) => setLocalValue(e.target.value)} onBlur={handleBlur} />
       ) : type === "select" ? (
-        <select
-          value={localValue}
-          onChange={handleSelectChange}
-        >
-          {options.map(opt => {
+        <select value={localValue} onChange={handleSelectChange}>
+          {options.map((opt) => {
             const isObj = typeof opt === "object" && opt !== null;
             const optVal = isObj ? opt.value : opt;
             const optLabel = isObj ? opt.label : opt;
-            return <option key={optVal} value={optVal}>{optLabel}</option>;
+            return (
+              <option key={optVal} value={optVal}>
+                {optLabel}
+              </option>
+            );
           })}
         </select>
       ) : (
-        <input type={type} value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur} />
+        <input type={type} value={localValue} onChange={(e) => setLocalValue(e.target.value)} onBlur={handleBlur} />
       )}
     </div>
   );

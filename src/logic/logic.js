@@ -372,50 +372,60 @@ export function fmtCampaignDaysLeft(campaign, legs) {
   return Math.round(diffTime / 86400000); // 86400000 ms per day
 }
 
-// Auto-detect Option Strategy from active legs
-export function detectStrategy(legs) {
-  if (!legs || legs.length === 0) return "Custom";
+// logic.js
 
-  let activeLegs = legs.filter(l => l.isOpen);
-  if (activeLegs.length === 0) {
-    const initialLegs = legs.filter(l => !l.rolledFrom);
-    activeLegs = initialLegs.length > 0 ? initialLegs : [legs[0]];
-  }
+/**
+ * Calculates campaign duration in days from earliest leg open date 
+ * to latest leg close date (or today if still open).
+ */
+export function getCampaignDuration(legs = []) {
+  if (!legs || legs.length === 0) return 0;
 
-  const types = activeLegs.map(l => (l.type || "").toLowerCase().trim());
-  const sellPuts = types.filter(t => t === "sell_put" || t === "short_put").length;
-  const buyPuts = types.filter(t => t === "buy_put" || t === "long_put").length;
-  const sellCalls = types.filter(t => t === "sell_call" || t === "short_call").length;
-  const buyCalls = types.filter(t => t === "buy_call" || t === "long_call").length;
-  const stocks = types.filter(t => t === "stock").length;
+  let minOpenTime = Infinity;
+  let maxCloseTime = -Infinity;
+  let hasOpenLegs = false;
 
-  const totalActive = activeLegs.length;
-
-  if (totalActive === 1) {
-    if (sellPuts === 1) return "Short Put";
-    if (buyPuts === 1) return "Long Put";
-    if (sellCalls === 1) return "Short Call";
-    if (buyCalls === 1) return "Long Call";
-    if (stocks === 1) return "Stock";
-    return "Single Leg";
-  }
-
-  if (totalActive === 2) {
-    if (sellPuts === 1 && buyPuts === 1) return "Put Vertical";
-    if (sellCalls === 1 && buyCalls === 1) return "Call Vertical";
-    if (sellPuts === 1 && sellCalls === 1) return "Short Strangle";
-    if (buyPuts === 1 && buyCalls === 1) return "Long Strangle";
-    if (stocks === 1 && sellCalls === 1) return "Covered Call";
-    return "2-Leg Spread";
-  }
-
-  if (totalActive === 4) {
-    if (sellPuts === 1 && buyPuts === 1 && sellCalls === 1 && buyCalls === 1) {
-      return "Iron Condor";
+  legs.forEach((leg) => {
+    if (leg.openDate) {
+      // Normalize to local midnight to prevent time zone offset errors
+      const openTime = new Date(`${leg.openDate}T00:00:00`).getTime();
+      if (!isNaN(openTime) && openTime < minOpenTime) {
+        minOpenTime = openTime;
+      }
     }
-  }
 
-  return `${totalActive}-Leg Position`;
+    if (leg.isOpen) {
+      hasOpenLegs = true;
+    } else if (leg.closeDate) {
+      const closeTime = new Date(`${leg.closeDate}T00:00:00`).getTime();
+      if (!isNaN(closeTime) && closeTime > maxCloseTime) {
+        maxCloseTime = closeTime;
+      }
+    }
+  });
+
+  if (minOpenTime === Infinity) return 0;
+
+  // Use current date if any leg is open; otherwise, use the latest close date
+  const endTime = hasOpenLegs
+    ? new Date().setHours(0, 0, 0, 0)
+    : maxCloseTime !== -Infinity
+    ? maxCloseTime
+    : minOpenTime;
+
+  const diffMs = Math.max(0, endTime - minOpenTime);
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Computes total quantity across legs and returns corresponding badge styling.
+ */
+export function detectStrategy(legs) {
+  if (!legs || legs.length === 0) return "0 Legs";
+
+  // Use the full array length instead of filtering active legs
+  const count = legs.length;
+  return `${count} ${count === 1 ? "Leg" : "Legs"}`;
 }
 
 // logic.js

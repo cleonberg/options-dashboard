@@ -475,19 +475,26 @@ export async function deleteLeg(uid, id) {
 }
 
 export async function rollLeg(uid, sourceLeg, rollFields = {}) { 
+  // 1. Close the current leg
   await editLeg(uid, {
     ...sourceLeg,
-    closed: true,
-    isOpen: false,
-    closeDate: rollFields.closeDate ?? nowMillis(),
+    isOpen: false, // Properly flags it as closed
+    closeDate: rollFields.closeDate,
+    closePrice: rollFields.closePrice,
   });
 
+  // 2. Create the new leg
   await addLeg(uid, {
     ticker: sourceLeg.ticker,
     type: sourceLeg.type,     
-    qty: sourceLeg.qty,       
-    ...rollFields,
+    // Use the new values if provided, otherwise fallback to the old leg's values
+    qty: rollFields.qty !== undefined ? rollFields.qty : sourceLeg.qty,       
+    strike: rollFields.strike !== undefined ? rollFields.strike : sourceLeg.strike, 
+    expiry: rollFields.expiry !== undefined ? rollFields.expiry : sourceLeg.expiry, 
     campaignId: sourceLeg.campaignId,
+    isOpen: true, // Mark the new leg as open
+    openDate: rollFields.rollDate, 
+    openPrice: rollFields.openPrice,
   });
 }
 

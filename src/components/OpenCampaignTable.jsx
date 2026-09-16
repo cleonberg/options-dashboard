@@ -1,12 +1,18 @@
 import React, { useState, useMemo } from "react";
-import { fmt, cashClass, computeCampaignSummary, fmtCampaignDaysLeft, detectStrategy } from "../logic/logic.js";
+import {
+  fmt,
+  cashClass,
+  computeCampaignSummary,
+  fmtCampaignDaysLeft,
+  detectStrategy,
+  getCampaignDuration
+} from "../logic/logic.js";
 import DaysLeftProgressBar from "./DaysLeftProgressBar.jsx";
+import DurationProgressBar from "./DurationProgressBar.jsx";
 import LegRatioBadge from "./LegRatioBadge.jsx";
-import CampaignForm from "./CampaignForm.jsx";
 
-export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCampaign }) {
+export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
   const [sortConfig, setSortConfig] = useState({ field: "daysLeft", direction: "asc" });
-  const [isAddingCampaign, setIsAddingCampaign] = useState(false);
 
   const handleSort = (field) => {
     setSortConfig((prev) => ({
@@ -19,6 +25,9 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCamp
     return [...campaigns].sort((a, b) => {
       let aVal, bVal;
 
+      const legsA = legs.filter((l) => String(l.campaignId) === String(a.id));
+      const legsB = legs.filter((l) => String(l.campaignId) === String(b.id));
+
       if (sortConfig.field === "ticker") {
         aVal = a.ticker || "";
         bVal = b.ticker || "";
@@ -30,11 +39,12 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCamp
       if (sortConfig.field === "daysLeft") {
         aVal = fmtCampaignDaysLeft(a, legs);
         bVal = fmtCampaignDaysLeft(b, legs);
-      } else if (sortConfig.field === "totalPL") {
-        const legsA = legs.filter(l => l.campaignId === a.id);
-        const legsB = legs.filter(l => l.campaignId === b.id);
-        aVal = computeCampaignSummary(a, legsA).totalPL || 0;
-        bVal = computeCampaignSummary(b, legsB).totalPL || 0;
+      } else if (sortConfig.field === "duration") {
+        aVal = getCampaignDuration(legsA);
+        bVal = getCampaignDuration(legsB);
+      } else if (sortConfig.field === "netCredit") {
+        aVal = computeCampaignSummary(a, legsA).netCredit || 0;
+        bVal = computeCampaignSummary(b, legsB).netCredit || 0;
       }
 
       return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
@@ -48,41 +58,6 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCamp
 
   return (
     <div className="open-campaigns-container">
-      
-      {/* Header & Toggle Button */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        {/* <h3 style={{ color: "#9fb3ff", margin: 0 }}>Open Campaigns</h3> */}
-        <button 
-          onClick={() => setIsAddingCampaign(!isAddingCampaign)}
-          style={{ 
-            backgroundColor: isAddingCampaign ? "transparent" : "#3182ce",
-            border: isAddingCampaign ? "1px solid #9fb3ff" : "none",
-            color: isAddingCampaign ? "#9fb3ff" : "#fff",
-            padding: "6px 12px",
-            borderRadius: "4px",
-            cursor: "pointer"
-          }}
-        >
-          {isAddingCampaign ? "Cancel" : "+ Add Campaign"}
-        </button>
-      </div>
-
-      {/* Animated Expandable Wrapper */}
-      <div className={`add-leg-wrapper ${isAddingCampaign ? "open" : ""}`}>
-        <div className="add-leg-content">
-          <div style={{ paddingBottom: "24px" }}>
-            <CampaignForm 
-              onSubmit={(campaignData) => {
-                if (onAddCampaign) onAddCampaign(campaignData);
-                setIsAddingCampaign(false); 
-              }}
-              onCancel={() => setIsAddingCampaign(false)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Responsive Table Wrapper */}
       <div className="table-container">
         <table className="summary-table">
           <thead>
@@ -92,51 +67,66 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect, onAddCamp
               </th>
               {/* Hidden on small screens */}
               <th className="hide-mobile">Legs Ratio</th>
+              <th onClick={() => handleSort("duration")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Duration{getSortIndicator("duration")}
+              </th>
               <th onClick={() => handleSort("daysLeft")} style={{ cursor: "pointer", userSelect: "none" }}>
                 Time Remaining{getSortIndicator("daysLeft")}
               </th>
-              <th onClick={() => handleSort("totalPL")} style={{ cursor: "pointer", userSelect: "none" }}>
-                Total P/L{getSortIndicator("totalPL")}
+              <th onClick={() => handleSort("netCredit")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Max Credit{getSortIndicator("netCredit")}
               </th>
             </tr>
           </thead>
           <tbody>
-            {sortedCampaigns.map(c => {
-              const legsForCampaign = legs.filter(l => l.campaignId === c.id);
+            {sortedCampaigns.map((c) => {
+              const legsForCampaign = legs.filter((l) => String(l.campaignId) === String(c.id));
               const summary = computeCampaignSummary(c, legsForCampaign);
               const daysLeft = fmtCampaignDaysLeft(c, legs);
               const strategy = detectStrategy(legsForCampaign);
+              const durationDays = getCampaignDuration(legsForCampaign);
 
-              // 🛠️ Generate multiline tooltip text for the legs in this campaign
-              const tooltipText = legsForCampaign.length > 0 
-                ? `Campaign Legs (${legsForCampaign.length}):\n` + legsForCampaign.map(l => {
-                    const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
-                    const strikeStr = l.strike ? ` @ ${l.strike}` : "";
-                    const expStr = l.expiry ? ` (Exp: ${l.expiry})` : "";
-                    return `${status} | ${l.qty} ${l.type}${strikeStr}${expStr}`;
-                  }).join("\n")
-                : "No legs in this campaign";
+              const tooltipText =
+                legsForCampaign.length > 0
+                  ? `Campaign Legs (${legsForCampaign.length}):\n` +
+                    legsForCampaign
+                      .map((l) => {
+                        const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
+                        const strikeStr = l.strike ? ` @ ${l.strike}` : "";
+                        const expStr = l.expiry ? ` (Exp: ${l.expiry})` : "";
+                        return `${status} | ${l.qty} ${l.type}${strikeStr}${expStr}`;
+                      })
+                      .join("\n")
+                  : "No legs in this campaign";
 
               return (
-                <tr 
-                  key={c.id} 
+                <tr
+                  key={c.id}
                   onClick={() => onSelect(c.id)}
-                  title={tooltipText} // <-- Native Tooltip added to the entire row
+                  title={tooltipText}
                   style={{ cursor: "pointer" }}
                 >
                   <td>
-                    <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
-                    <span className="strategy-badge">{strategy}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
+                      <span className="strategy-badge">{strategy}</span>
+                    </div>
                   </td>
                   {/* Hidden on small screens */}
                   <td className="hide-mobile">
                     <LegRatioBadge legs={legsForCampaign} />
                   </td>
+                  
+                  {/* Render the Duration Progress Bar here */}
+                  <td>
+                    <DurationProgressBar durationDays={durationDays} />
+                  </td>
+
                   <td>
                     <DaysLeftProgressBar daysLeft={daysLeft} />
                   </td>
-                  <td className={cashClass(summary.totalPL)}>
-                    {fmt(summary.totalPL)}
+                  <td className={cashClass(summary.netCredit)}>
+                    {fmt(summary.netCredit)}
                   </td>
                 </tr>
               );
