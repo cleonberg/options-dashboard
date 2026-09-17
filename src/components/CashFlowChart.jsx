@@ -65,7 +65,7 @@ export default function CashFlowChart({
 
     const baselinePL =
       firstDisplayedIndex > 0
-        ? fullSeries[firstDisplayedIndex - 1].cumulativePL
+        ? fullSeries[firstDisplayedIndex - 1].cumulativeCashFlow
         : 0;
 
     const firstDayDate = new Date(`${filteredSeries[0].date}T00:00:00`);
@@ -76,7 +76,7 @@ export default function CashFlowChart({
         timestamp: baselineTimestamp,
         dateStr: "Start",
         netCashFlow: 0,
-        cumulativePL: baselinePL,
+        cumulativeCashFlow: baselinePL,
         labels: "Baseline",
       },
     ];
@@ -143,6 +143,8 @@ export default function CashFlowChart({
               stroke="#9fb3ff"
               tickFormatter={formatYAxis}
               tick={{ fontSize: 12 }}
+              domain={["auto", "auto"]}
+              padding={{ top: 5, bottom: 5 }}
             />
 
             <Tooltip
@@ -173,9 +175,20 @@ export default function CashFlowChart({
                       Date: {dateStr}
                     </div>
 
-                    {/* Cash Flow Value */}
-                    <div style={{ fontSize: "12px", marginBottom: "6px", color: "#10b981" }}>
-                      Cumulative Net: {fmt(data.cumulativePL)}
+                    {/* Cumulative Cash Flow */}
+                    <div style={{ fontSize: "12px", marginBottom: "3px", color: "#10b981" }}>
+                      Cumulative Net: {fmt(data.cumulativeCashFlow)}
+                    </div>
+
+                    {/* Daily Net Cash Flow */}
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        marginBottom: "6px",
+                        color: data.netCashFlow >= 0 ? "#10b981" : "#f87171",
+                      }}
+                    >
+                      Daily Net: {fmt(data.netCashFlow)}
                     </div>
 
                     {/* Small Ticker / Campaign Contributor Labels */}
@@ -216,7 +229,7 @@ export default function CashFlowChart({
 
             <Area
               type="stepAfter"
-              dataKey="cumulativePL"
+              dataKey="cumulativeCashFlow"
               stroke="#10b981"
               fill="#10b981"
               fillOpacity={0.2}

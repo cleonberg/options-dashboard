@@ -330,8 +330,6 @@ export function fmtCampaignDaysLeft(campaign, legs) {
   return Math.round(diffTime / 86400000); // 86400000 ms per day
 }
 
-// logic.js
-
 /**
  * Calculates campaign duration in days from earliest leg open date 
  * to latest leg close date (or today if still open).
@@ -430,7 +428,6 @@ export function getLegCashFlowEvents(leg, campaign = null) {
   const isStock = typeStr.includes("stock");
   const isSell = typeStr.startsWith("sell") || typeStr.startsWith("short");
 
-  // Determine campaign label: Stored Name -> Ticker Fallback
   const campaignName = campaign
     ? (campaign.name || campaign.ticker)
     : (leg.ticker || leg.symbol || "");
@@ -485,12 +482,13 @@ export function computeDailyCashFlowSeries(legs = [], campaigns = []) {
       if (!day) return;
 
       if (!dailyMap[day]) {
-        dailyMap[day] = { amount: 0, labels: new Set() };
+        dailyMap[day] = { amount: 0, items: [] };
       }
 
       dailyMap[day].amount += event.amount;
       if (event.label) {
-        dailyMap[day].labels.add(event.label);
+        // Store label and amount together
+        dailyMap[day].items.push({ label: event.label, amount: event.amount });
       }
     });
   });
@@ -502,11 +500,16 @@ export function computeDailyCashFlowSeries(legs = [], campaigns = []) {
     const netCashFlow = Number(dailyMap[date].amount.toFixed(2));
     cumulative += netCashFlow;
 
+    // Format each item as "Label: +$150.00"
+    const formattedLabels = dailyMap[date].items
+      .map((item) => `${item.label}: ${fmt(item.amount)}`)
+      .join(", ");
+
     return {
       date,
       netCashFlow,
-      cumulativePL: Number(cumulative.toFixed(2)),
-      labels: Array.from(dailyMap[date].labels).join(", "),
+      cumulativeCashFlow: Number(cumulative.toFixed(2)),
+      labels: formattedLabels,
     };
   });
 }

@@ -27,26 +27,82 @@ export default function PerformanceChart({
     }).format(val);
 
   const formatXAxis = (timestamp) => {
-    if (!timestamp) return "";
+    if (timestamp == null) return "";
+
     const d = new Date(timestamp);
     return isNaN(d.getTime())
       ? ""
-      : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      : d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
   };
 
   const chartData = useMemo(() => {
+    /*
+     * IMPORTANT:
+     * Treat YYYY-MM-DD values as calendar dates in the user's local
+     * timezone. new Date("YYYY-MM-DD") treats them as UTC, which can
+     * display one day early in US time zones.
+     */
     const parseTimestamp = (dateStr) => {
       if (!dateStr) return null;
-      const t = new Date(dateStr).getTime();
-      return isNaN(t) ? null : t;
+
+      const value = String(dateStr).trim();
+
+      // Calendar date: create local midnight.
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (match) {
+        const [, year, month, day] = match.map(Number);
+        const timestamp = new Date(year, month - 1, day).getTime();
+        return isNaN(timestamp) ? null : timestamp;
+      }
+
+      // Timestamp/date-time values retain their normal JS parsing behavior.
+      const timestamp = new Date(value).getTime();
+      return isNaN(timestamp) ? null : timestamp;
     };
 
-    // Single Campaign Mode
+    /*
+     * Normalize a date to a YYYY-MM-DD calendar-date key.
+     * This is used for grouping so that there can only be ONE chart
+     * point for each calendar day.
+     */
+    const getDateKey = (dateStr) => {
+      if (!dateStr) return null;
+
+      const value = String(dateStr).trim();
+
+      // For stored calendar dates, don't run them through UTC conversion.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+      }
+
+      const timestamp = new Date(value).getTime();
+      if (isNaN(timestamp)) return null;
+
+      const d = new Date(timestamp);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+
+      return `${year}-${month}-${day}`;
+    };
+
+    /*
+     * SINGLE CAMPAIGN MODE
+     *
+     * There is only one campaign, so group its closed legs by close date.
+     * This guarantees one point per day even when multiple legs close on
+     * the same day.
+     */
     if (mode === "single" || campaign) {
       const targetCampaign = campaign || closedCampaigns[0];
       if (!targetCampaign) return [];
 
-      const campaignLegs = legs.filter((l) => l.campaignId === targetCampaign.id);
+      const campaignLegs = legs.filter(
+        (l) => l.campaignId === targetCampaign.id
+      );
 
       const openDate =
         targetCampaign.startDate ||
@@ -55,81 +111,117 @@ export default function PerformanceChart({
           : null);
 
       const openTimestamp = parseTimestamp(openDate) || Date.now();
-
-      // Read stored name directly
       const campaignName = targetCampaign.name || targetCampaign.ticker;
 
       const timeline = [
         {
           timestamp: openTimestamp,
           dateStr: openDate || "Opened",
+          pl: 0,
           cumulativePL: 0,
           labels: "Baseline",
+          campaigns: [],
         },
       ];
 
-      const closedLegs = campaignLegs
+      const dailyGroups = {};
+
+      campaignLegs
         .filter((l) => !l.isOpen && (l.closeDate || l.CloseDate))
-        .sort((a, b) => {
-          const dateA = new Date(a.closeDate || a.CloseDate);
-          const dateB = new Date(b.closeDate || b.CloseDate);
-          return dateA - dateB;
+        .forEach((leg) => {
+          const closeDate = leg.closeDate || leg.CloseDate;
+          const dateKey = getDateKey(closeDate);
+          if (!dateKey) return;
+
+          const legPL =
+            computeCampaignSummary(targetCampaign, [leg]).totalPL || 0;
+
+          if (!dailyGroups[dateKey]) {
+            dailyGroups[dateKey] = {
+              pl: 0,
+              campaigns: [],
+            };
+          }
+
+          dailyGroups[dateKey].pl += legPL;
+
+          dailyGroups[dateKey].campaigns.push({
+            name: campaignName,
+            pl: legPL,
+          });
         });
 
       let runningPL = 0;
-      const dateGroups = {};
 
-      closedLegs.forEach((leg) => {
-        const cDate = leg.closeDate || leg.CloseDate;
-        const legPL = computeCampaignSummary(targetCampaign, [leg]).totalPL || 0;
-        dateGroups[cDate] = (dateGroups[cDate] || 0) + legPL;
-      });
+      Object.keys(dailyGroups)
+        .sort()
+        .forEach((dateKey) => {
+          const group = dailyGroups[dateKey];
+          runningPL += group.pl;
 
-      Object.keys(dateGroups).forEach((dateStr) => {
-        runningPL += dateGroups[dateStr];
-        const ts = parseTimestamp(dateStr);
-        if (ts) {
           timeline.push({
-            timestamp: ts,
-            dateStr: dateStr,
+            timestamp: parseTimestamp(dateKey),
+            dateStr: dateKey,
+            pl: Number(group.pl.toFixed(2)),
             cumulativePL: Number(runningPL.toFixed(2)),
             labels: campaignName,
+            campaigns: group.campaigns,
           });
-        }
-      });
+        });
 
       return timeline;
     }
 
-    // Dashboard Mode (Multi-campaign timeline)
-    const sortedClosed = [...closedCampaigns].sort(
-      (a, b) => new Date(a.endDate || 0) - new Date(b.endDate || 0)
-    );
+    /*
+     * DASHBOARD MODE
+     *
+     * Group ALL campaigns by calendar end date first. This is the critical
+     * fix for the vertical-line problem: two campaigns closing on the same
+     * day become ONE chart point instead of two points at the same X value.
+     */
+    const dailyGroups = {};
+
+    closedCampaigns.forEach((c) => {
+      const dateStr = c.endDate || c.startDate;
+      const dateKey = getDateKey(dateStr);
+      if (!dateKey) return;
+
+      const cLegs = legs.filter((l) => l.campaignId === c.id);
+      const pl = computeCampaignSummary(c, cLegs).totalPL || 0;
+      const campaignName = c.name || c.ticker;
+
+      if (!dailyGroups[dateKey]) {
+        dailyGroups[dateKey] = {
+          pl: 0,
+          campaigns: [],
+        };
+      }
+
+      dailyGroups[dateKey].pl += pl;
+
+      dailyGroups[dateKey].campaigns.push({
+        name: campaignName,
+        pl,
+      });
+    });
 
     let cumulativePL = 0;
-    return sortedClosed
-      .map((c) => {
-        const cLegs = legs.filter((l) => l.campaignId === c.id);
-        const pl = computeCampaignSummary(c, cLegs).totalPL || 0;
-        cumulativePL += pl;
 
-        const dateStr = c.endDate || c.startDate;
-        const ts = parseTimestamp(dateStr);
+    return Object.keys(dailyGroups)
+      .sort()
+      .map((dateKey) => {
+        const group = dailyGroups[dateKey];
+        cumulativePL += group.pl;
 
-        // Read stored name directly
-        const campaignName = c.name || c.ticker;
-
-        return ts
-          ? {
-              timestamp: ts,
-              dateStr: dateStr,
-              labels: campaignName,
-              pl: pl,
-              cumulativePL: Number(cumulativePL.toFixed(2)),
-            }
-          : null;
-      })
-      .filter(Boolean);
+        return {
+          timestamp: parseTimestamp(dateKey),
+          dateStr: dateKey,
+          labels: group.campaigns.map((c) => c.name).join(", "),
+          pl: Number(group.pl.toFixed(2)),
+          cumulativePL: Number(cumulativePL.toFixed(2)),
+          campaigns: group.campaigns,
+        };
+      });
   }, [closedCampaigns, legs, campaign, mode]);
 
   if (chartData.length === 0) {
@@ -163,12 +255,16 @@ export default function PerformanceChart({
       }}
     >
       <h3 style={{ color: "#9fb3ff", marginTop: 0, marginBottom: "16px" }}>
-        {isSingleMode ? "Campaign Realized P/L Trajectory" : "Cumulative Performance"}
+        {isSingleMode
+          ? "Campaign Realized P/L Trajectory"
+          : "Cumulative Performance"}
       </h3>
+
       <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#24345f" />
+
             <XAxis
               dataKey="timestamp"
               type="number"
@@ -177,7 +273,12 @@ export default function PerformanceChart({
               stroke="#9fb3ff"
               tick={{ fontSize: 12 }}
             />
-            <YAxis stroke="#9fb3ff" tickFormatter={formatYAxis} tick={{ fontSize: 12 }} />
+
+            <YAxis
+              stroke="#9fb3ff"
+              tickFormatter={formatYAxis}
+              tick={{ fontSize: 12 }}
+            />
 
             <Tooltip
               content={({ active, payload }) => {
@@ -185,7 +286,6 @@ export default function PerformanceChart({
 
                 const data = payload[0].payload;
                 const dateStr = formatXAxis(data.timestamp) || "Baseline";
-                const labelVal = data.labels || "";
 
                 return (
                   <div
@@ -195,18 +295,30 @@ export default function PerformanceChart({
                       borderRadius: "6px",
                       padding: "8px 12px",
                       color: "#fff",
-                      maxWidth: "280px",
+                      maxWidth: "300px",
                     }}
                   >
-                    <div style={{ fontWeight: "bold", marginBottom: "4px", fontSize: "13px" }}>
+                    <div
+                      style={{
+                        fontWeight: "bold",
+                        marginBottom: "4px",
+                        fontSize: "13px",
+                      }}
+                    >
                       Date: {dateStr}
                     </div>
 
-                    <div style={{ fontSize: "12px", marginBottom: "6px", color: "#3182ce" }}>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        marginBottom: "6px",
+                        color: "#3182ce",
+                      }}
+                    >
                       Cumulative P/L: {fmt(data.cumulativePL)}
                     </div>
 
-                    {labelVal && labelVal !== "Baseline" && (
+                    {data.campaigns && data.campaigns.length > 0 && (
                       <div
                         style={{
                           borderTop: "1px solid #24345f",
@@ -214,17 +326,49 @@ export default function PerformanceChart({
                           marginTop: "4px",
                         }}
                       >
-                        <div style={{ fontSize: "10px", color: "#9fb3ff", marginBottom: "2px", fontWeight: "600" }}>
-                          Campaign:
-                        </div>
                         <div
                           style={{
-                            fontSize: "11px",
-                            lineHeight: "1.3",
-                            color: "#cbd5e1",
+                            fontSize: "10px",
+                            color: "#9fb3ff",
+                            marginBottom: "4px",
+                            fontWeight: "600",
                           }}
                         >
-                          • {labelVal}
+                          Campaign Impact:
+                        </div>
+
+                        {data.campaigns.map((item, index) => (
+                          <div
+                            key={`${item.name}-${index}`}
+                            style={{
+                              fontSize: "11px",
+                              lineHeight: "1.4",
+                              color: "#cbd5e1",
+                            }}
+                          >
+                            • {item.name}:{" "}
+                            <span
+                              style={{
+                                color:
+                                  item.pl >= 0 ? "#10b981" : "#ef4444",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              {fmt(item.pl)}
+                            </span>
+                          </div>
+                        ))}
+
+                        <div
+                          style={{
+                            borderTop: "1px solid #24345f",
+                            marginTop: "5px",
+                            paddingTop: "5px",
+                            fontSize: "11px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          Daily Net P/L: {fmt(data.pl)}
                         </div>
                       </div>
                     )}
@@ -233,14 +377,28 @@ export default function PerformanceChart({
               }}
             />
 
-            <ReferenceLine y={0} stroke="#4a5568" strokeDasharray="3 3" />
+            <ReferenceLine
+              y={0}
+              stroke="#4a5568"
+              strokeDasharray="3 3"
+            />
+
             <Area
               type="monotone"
               dataKey="cumulativePL"
               stroke="#3182ce"
               fill="#3182ce"
               fillOpacity={0.2}
-              dot={isSingleMode ? { r: 4, fill: "#4ade80", stroke: "#3182ce", strokeWidth: 1 } : false}
+              dot={
+                isSingleMode
+                  ? {
+                      r: 4,
+                      fill: "#4ade80",
+                      stroke: "#3182ce",
+                      strokeWidth: 1,
+                    }
+                  : false
+              }
               activeDot={{ r: 6 }}
             />
           </AreaChart>
