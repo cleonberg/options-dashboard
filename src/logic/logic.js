@@ -432,32 +432,66 @@ export function getLegCashFlowEvents(leg, campaign = null) {
     ? (campaign.name || campaign.ticker)
     : (leg.ticker || leg.symbol || "");
 
-  const legDesc = leg.type ? `${leg.type}${leg.strike ? ` $${leg.strike}` : ""}` : "";
-  const label = campaignName && legDesc ? `${campaignName} (${legDesc})` : campaignName || legDesc || "Leg";
+  const legDesc = leg.type
+    ? `${leg.type}${leg.strike ? ` $${leg.strike}` : ""}`
+    : "";
+
+  const label =
+    campaignName && legDesc
+      ? `${campaignName} (${legDesc})`
+      : campaignName || legDesc || "Leg";
 
   // Opening Cash Flow
+  // No cash-flow impact for stocks or long options at open.
+  // Only short/sell option positions receive cash at open.
   if (leg.openDate && leg.openPrice != null) {
-    if (!isStock) {
-      const cashFlow = isSell
-        ? Number(leg.openPrice) * Number(leg.qty || 1) * multiplier
-        : -Number(leg.openPrice) * Number(leg.qty || 1) * multiplier;
-      events.push({ date: leg.openDate, amount: cashFlow, label });
+    if (!isStock && isSell) {
+      const cashFlow =
+        Number(leg.openPrice) *
+        Number(leg.qty || 1) *
+        multiplier;
+
+      events.push({
+        date: leg.openDate,
+        amount: cashFlow,
+        label,
+      });
     }
   }
 
   // Closing Cash Flow
   if (leg.closeDate && leg.closePrice != null && !leg.isOpen) {
     let cashFlow;
+
     if (isStock) {
       cashFlow = isSell
-        ? (Number(leg.openPrice) - Number(leg.closePrice)) * Number(leg.qty || 1)
-        : (Number(leg.closePrice) - Number(leg.openPrice)) * Number(leg.qty || 1);
+        ? (Number(leg.openPrice) - Number(leg.closePrice)) *
+          Number(leg.qty || 1)
+        : (Number(leg.closePrice) - Number(leg.openPrice)) *
+          Number(leg.qty || 1);
+
+    } else if (isSell) {
+      // Short option:
+      // premium received at open, then cost to close.
+      cashFlow =
+        -Number(leg.closePrice) *
+        Number(leg.qty || 1) *
+        multiplier;
+
     } else {
-      cashFlow = isSell
-        ? -Number(leg.closePrice) * Number(leg.qty || 1) * multiplier
-        : Number(leg.closePrice) * Number(leg.qty || 1) * multiplier;
+      // Long option:
+      // Record ONLY the net P/L at close.
+      cashFlow =
+        (Number(leg.closePrice) - Number(leg.openPrice)) *
+        Number(leg.qty || 1) *
+        multiplier;
     }
-    events.push({ date: leg.closeDate, amount: cashFlow, label });
+
+    events.push({
+      date: leg.closeDate,
+      amount: cashFlow,
+      label,
+    });
   }
 
   return events;

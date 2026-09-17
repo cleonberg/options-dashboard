@@ -6,6 +6,10 @@ import { forceSync, initialSync, deleteAllRemote } from "../sync/sync";
 import { auth } from "../auth";
 import { buildImportData } from "../logic/importCsv.js";
 import { updateCampaign } from "../sync/sync";
+import {
+  computeLegPL,
+  getLegCashFlowEvents,
+} from "../logic/logic.js";
 
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
@@ -56,6 +60,226 @@ export default function SettingsTab({ reloadAll }) {
     alert(`Restored ${campaign.Ticker || "Campaign"}`);
     loadDeletedCampaigns(); // Refresh the list
     if (typeof reloadAll === "function") reloadAll(); // Refresh dashboard stats
+  }
+
+  function formatExportDate(value) {
+    if (value == null || value === "") return "";
+
+    // Already a Date object
+    if (value instanceof Date) {
+      if (isNaN(value.getTime())) return "";
+      return value.toISOString().slice(0, 10);
+    }
+
+    // Numeric timestamp in milliseconds
+    if (typeof value === "number") {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) return "";
+      return date.toISOString().slice(0, 10);
+    }
+
+    const str = String(value).trim();
+
+    // Numeric timestamp stored as a string
+    if (/^\d+$/.test(str)) {
+      const date = new Date(Number(str));
+      if (isNaN(date.getTime())) return "";
+      return date.toISOString().slice(0, 10);
+    }
+
+    // ISO date/time
+    if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+      return str.slice(0, 10);
+    }
+
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      return str;
+    }
+
+    // M/D/YYYY or MM/DD/YYYY
+    const match = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+    if (match) {
+      const [, month, day, year] = match;
+
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+
+    return str;
+  }
+
+  async function handleLegInfoExport() {
+    try {
+      const legs = await dbLocal.getAllLegs();
+
+      if (!legs.length) {
+        alert("No legs found to export.");
+        return;
+      }
+
+      // Collect every field that exists on any leg
+      const fieldSet = new Set();
+
+      legs.forEach((leg) => {
+        Object.keys(leg).forEach((key) => fieldSet.add(key));
+      });
+
+      const headers = Array.from(fieldSet);
+
+      const csvEscape = (value) => {
+        if (value == null) return "";
+
+        if (typeof value === "object") {
+          value = JSON.stringify(value);
+        }
+
+        const str = String(value);
+
+        if (
+          str.includes(",") ||
+          str.includes('"') ||
+          str.includes("\n") ||
+          str.includes("\r")
+        ) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+
+        return str;
+      };
+
+      const rows = legs.map((leg) =>
+        headers.map((header) => csvEscape(leg[header]))
+      );
+
+      const csv = [
+        headers.map(csvEscape).join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\r\n");
+
+      const blob = new Blob(
+        [csv],
+        { type: "text/csv;charset=utf-8;" }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      a.href = url;
+      a.download = `leg-info-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`;
+
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to export leg info:", err);
+      alert("Failed to create the leg information CSV.");
+    }
+  }
+
+  async function handleTradeAnalysisExport() {
+    try {
+      const campaigns = await dbLocal.getAllCampaigns();
+      const legs = await dbLocal.getAllLegs();
+
+      const campaignMap = new Map(
+        campaigns.map((campaign) => [
+          String(campaign.id).trim().toLowerCase(),
+          campaign,
+        ])
+      );
+
+      const headers = [
+        "Campaign",
+        "Campaign ID",
+        "Ticker",
+        "Leg ID",
+        "Type",
+        "Quantity",
+        "Strike",
+        "Expiration",
+        "Open Date",
+        "Open Price",
+        "Close Date",
+        "Close Price",
+        "Status",
+        "Cash Flow",
+        "P/L",
+      ];
+
+      const rows = legs.map((leg) => {
+        const campaign = campaignMap.get(
+          String(leg.campaignId || "").trim().toLowerCase()
+        );
+
+        const cashFlowEvents = getLegCashFlowEvents(leg, campaign);
+
+        const cashFlow = cashFlowEvents.reduce(
+          (sum, event) => sum + Number(event.amount || 0),
+          0
+        );
+
+        const pl = computeLegPL(leg);
+
+        return [
+          campaign?.name || campaign?.ticker || "",
+          leg.campaignId || "",
+          leg.ticker || campaign?.ticker || "",
+          leg.id || "",
+          leg.type || "",
+          leg.qty ?? "",
+          leg.strike ?? "",
+          leg.expiration ?? "",
+          formatExportDate(leg.openDate),
+          leg.openPrice ?? "",
+          formatExportDate(leg.closeDate),
+          leg.closePrice ?? "",
+          leg.isOpen ? "Open" : "Closed",
+          cashFlow,
+          pl == null ? "" : pl,
+        ];
+      });
+
+      const csvEscape = (value) => {
+        if (value == null) return '""';
+
+        const str = String(value);
+        return `"${str.replace(/"/g, '""')}"`;
+      };
+
+      const csv = [
+        headers,
+        ...rows,
+      ]
+        .map((row) => row.map(csvEscape).join(","))
+        .join("\r\n");
+
+      const blob = new Blob(
+        [csv],
+        { type: "text/csv;charset=utf-8;" }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      a.href = url;
+      a.download = `trade-analysis-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`;
+
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to export trade analysis:", err);
+      alert("Failed to create the trade analysis CSV.");
+    }
   }
 
   // Inside your component, near your other handlers:
@@ -415,6 +639,40 @@ export default function SettingsTab({ reloadAll }) {
             onChange={handleCsvImport}
             style={{ maxWidth: "250px" }}
           />
+        </div>
+
+        <div className="settings-section-title" style={{ marginTop: "16px" }}>
+          Leg Information (CSV)
+        </div>
+
+        <div className="settings-row" style={{ alignItems: "center" }}>
+          <button
+            className="secondary"
+            onClick={handleLegInfoExport}
+          >
+            Export Leg Info
+          </button>
+
+          <span className="small" style={{ margin: "0 8px" }}>
+            Raw leg data from the local database
+          </span>
+        </div>
+
+        <div className="settings-section-title" style={{ marginTop: "16px" }}>
+          Trade Analysis (CSV)
+        </div>
+
+        <div className="settings-row" style={{ alignItems: "center" }}>
+          <button
+            className="secondary"
+            onClick={handleTradeAnalysisExport}
+          >
+            Export Trade Analysis
+          </button>
+
+          <span className="small" style={{ margin: "0 8px" }}>
+            All legs with cash flow and P/L
+          </span>
         </div>
       </div>
 
