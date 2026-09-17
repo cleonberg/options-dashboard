@@ -340,6 +340,7 @@ export default function DashboardTab({
       {activeChart === "cashflow" ? (
         <CashFlowChart
           legs={legs}
+          campaigns={campaigns}
           mode="dashboard"
           startDateFilter={startDateFilter}
           endDateFilter={endDateFilter}

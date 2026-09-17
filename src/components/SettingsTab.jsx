@@ -5,6 +5,7 @@ import GoogleSignIn from "./GoogleSignIn.jsx";
 import { forceSync, initialSync, deleteAllRemote } from "../sync/sync";
 import { auth } from "../auth";
 import { buildImportData } from "../logic/importCsv.js";
+import { updateCampaign } from "../sync/sync";
 
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
@@ -56,6 +57,53 @@ export default function SettingsTab({ reloadAll }) {
     loadDeletedCampaigns(); // Refresh the list
     if (typeof reloadAll === "function") reloadAll(); // Refresh dashboard stats
   }
+
+  // Inside your component, near your other handlers:
+  const handleRetroactiveRename = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("You must be logged in to rename campaigns.");
+      return;
+    }
+
+    const confirm = window.confirm(
+      "This will rename all existing campaigns sequentially. Are you sure?"
+    );
+    if (!confirm) return;
+
+    try {
+      // 1. Fetch ALL campaigns so our numbering matches Dexie's .count() perfectly
+      const allCampaigns = await dbLocal.campaigns.toArray(); //[cite: 2, 3]
+
+      // 2. Sort them chronologically. 
+      // We use startDate or updatedAt to ensure older campaigns get lower numbers.
+      allCampaigns.sort((a, b) => {
+        const dateA = a.startDate || a.updatedAt || 0;
+        const dateB = b.startDate || b.updatedAt || 0;
+        return new Date(dateA) - new Date(dateB);
+      });
+
+      let count = 1;
+      for (const campaign of allCampaigns) {
+        const ticker = campaign.ticker || "UNKNOWN";
+        const newName = `${ticker} #${count}`;
+
+        // 3. Only trigger an update if the name actually needs changing
+        if (campaign.name !== newName) {
+          // updateCampaign handles saving to Dexie and pushing to Firestore[cite: 3]
+          await updateCampaign(uid, campaign.id, { name: newName });
+          console.log(`Renamed: ${ticker} -> ${newName}`);
+        }
+        
+        count++;
+      }
+
+      alert(`Successfully renamed ${count - 1} campaigns!`);
+    } catch (err) {
+      console.error("Error renaming campaigns:", err);
+      alert("An error occurred. Check the console.");
+    }
+  };
 
   // ---------- CSV Parsing Logic ----------
   function normalizeRow(row) {
@@ -368,6 +416,19 @@ export default function SettingsTab({ reloadAll }) {
             style={{ maxWidth: "250px" }}
           />
         </div>
+      </div>
+
+      <div className="mt-8 p-4 border border-red-500 rounded bg-red-50">
+        <h3 className="text-red-700 font-bold mb-2">Admin Tools</h3>
+        <p className="text-sm text-red-600 mb-4">
+          Run this once to apply the standard "TICKER #123" naming convention to all historical campaigns.
+        </p>
+        <button 
+          onClick={handleRetroactiveRename}
+          className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Retroactively Rename All Campaigns
+        </button>
       </div>
 
       {/* 3. TRASH & RECOVERY */}

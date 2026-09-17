@@ -1,6 +1,6 @@
 // src/components/CashFlowChart.jsx
 import React, { useMemo } from "react";
-import { fmt } from "../logic/logic.js";
+import { fmt, computeDailyCashFlowSeries } from "../logic/logic.js";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -14,10 +14,11 @@ import {
 
 export default function CashFlowChart({
   legs = [],
+  campaigns = [],
   campaign = null,
   mode = "dashboard",
-  startDateFilter = "", 
-  endDateFilter = "",   
+  startDateFilter = "",
+  endDateFilter = "",
 }) {
   const formatYAxis = (val) =>
     new Intl.NumberFormat("en-US", {
@@ -32,124 +33,195 @@ export default function CashFlowChart({
     const d = new Date(timestamp);
     return isNaN(d.getTime())
       ? ""
-      : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      : d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
   };
 
   const chartData = useMemo(() => {
-    const parseTimestamp = (dateVal) => {
-      if (!dateVal) return null;
-      const t = new Date(dateVal).getTime();
-      return isNaN(t) ? null : t;
-    };
-
-    // Safely handles strings, Dates, and timestamps
-    const isWithinRange = (dateVal) => {
-      if (!dateVal) return false;
-      
-      let cleanDate;
-      if (typeof dateVal === "string") {
-        cleanDate = dateVal.slice(0, 10);
-      } else {
-        const d = new Date(dateVal);
-        if (isNaN(d.getTime())) return false;
-        
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        cleanDate = `${year}-${month}-${day}`;
-      }
-
-      if (startDateFilter && cleanDate < startDateFilter) return false;
-      if (endDateFilter && cleanDate > endDateFilter) return false;
-      return true;
-    };
-
     let targetLegs = [];
     if (mode === "single" || campaign) {
-      targetLegs = legs.filter((l) => l.campaignId === campaign.id);
+      targetLegs = legs.filter((l) => l.campaignId === campaign?.id);
     } else {
       targetLegs = legs;
     }
 
-    const events = [];
+    // Pass campaigns array to logic helper so it can map campaign tickers
+    const targetCampaigns = campaign ? [campaign] : campaigns;
+    const fullSeries = computeDailyCashFlowSeries(targetLegs, targetCampaigns);
 
-    targetLegs.forEach((leg) => {
-      const typeStr = String(leg.type || "").toLowerCase();
-      const isStock = typeStr.includes("stock");
-      const multiplier = isStock ? 1 : 100;
-      const isSell = typeStr.includes("sell") || typeStr.includes("short");
-
-      // Open Event
-      if (leg.openDate && leg.openPrice != null && isWithinRange(leg.openDate)) {
-        const openVal = Number(leg.openPrice) * Number(leg.qty || 1) * multiplier;
-        const cashFlow = isSell ? openVal : -openVal;
-        const ts = parseTimestamp(leg.openDate);
-        if (ts) events.push({ timestamp: ts, dateStr: String(leg.openDate), amount: cashFlow });
-      }
-
-      // Close Event
-      if (leg.closeDate && leg.closePrice != null && !leg.isOpen && isWithinRange(leg.closeDate)) {
-        const closeVal = Number(leg.closePrice) * Number(leg.qty || 1) * multiplier;
-        const cashFlow = isSell ? -closeVal : closeVal;
-        const ts = parseTimestamp(leg.closeDate);
-        if (ts) events.push({ timestamp: ts, dateStr: String(leg.closeDate), amount: cashFlow });
-      }
+    const filteredSeries = fullSeries.filter((day) => {
+      if (startDateFilter && day.date < startDateFilter) return false;
+      if (endDateFilter && day.date > endDateFilter) return false;
+      return true;
     });
 
-    if (events.length === 0) return [];
+    if (filteredSeries.length === 0) return [];
 
-    const dateGroups = {};
-    events.forEach((ev) => {
-      if (!dateGroups[ev.timestamp]) {
-        dateGroups[ev.timestamp] = { amount: 0, dateStr: ev.dateStr };
-      }
-      dateGroups[ev.timestamp].amount += ev.amount;
-    });
+    const firstDisplayedIndex = fullSeries.findIndex(
+      (day) => day.date === filteredSeries[0].date
+    );
 
-    const sortedTimestamps = Object.keys(dateGroups).map(Number).sort((a, b) => a - b);
-    const timeline = [];
-    let cumulativePL = 0;
+    const baselinePL =
+      firstDisplayedIndex > 0
+        ? fullSeries[firstDisplayedIndex - 1].cumulativePL
+        : 0;
 
-    if (sortedTimestamps.length > 0) {
-      timeline.push({
-        timestamp: sortedTimestamps[0] - 86400000, 
+    const firstDayDate = new Date(`${filteredSeries[0].date}T00:00:00`);
+    const baselineTimestamp = firstDayDate.getTime() - 86400000;
+
+    const timeline = [
+      {
+        timestamp: baselineTimestamp,
         dateStr: "Start",
-        cumulativePL: 0,
-      });
-    }
+        netCashFlow: 0,
+        cumulativePL: baselinePL,
+        labels: "Baseline",
+      },
+    ];
 
-    sortedTimestamps.forEach((ts) => {
-      cumulativePL += dateGroups[ts].amount;
+    filteredSeries.forEach((day) => {
+      const timestamp = new Date(`${day.date}T00:00:00`).getTime();
       timeline.push({
-        timestamp: ts,
-        dateStr: dateGroups[ts].dateStr,
-        cumulativePL: Number(cumulativePL.toFixed(2)),
+        ...day,
+        timestamp,
+        dateStr: day.date,
       });
     });
 
     return timeline;
-  }, [legs, campaign, mode, startDateFilter, endDateFilter]);
+  }, [legs, campaigns, campaign, mode, startDateFilter, endDateFilter]);
 
   if (chartData.length === 0) {
     return (
-      <div style={{ background: "#111f3f", padding: "16px", borderRadius: "8px", border: "1px solid #24345f", marginBottom: "24px", color: "#a0aec0", textAlign: "center" }}>
+      <div
+        style={{
+          background: "#111f3f",
+          padding: "16px",
+          borderRadius: "8px",
+          border: "1px solid #24345f",
+          marginBottom: "24px",
+          color: "#a0aec0",
+          textAlign: "center",
+        }}
+      >
         No cash flow events found within the selected date range.
       </div>
     );
   }
 
   return (
-    <div style={{ background: "#111f3f", padding: "16px", borderRadius: "8px", border: "1px solid #24345f", marginBottom: "24px" }}>
-      <h3 style={{ color: "#9fb3ff", marginTop: 0, marginBottom: "16px" }}>Cumulative Net Premium & Cash Flow</h3>
+    <div
+      style={{
+        background: "#111f3f",
+        padding: "16px",
+        borderRadius: "8px",
+        border: "1px solid #24345f",
+        marginBottom: "24px",
+      }}
+    >
+      <h3 style={{ color: "#9fb3ff", marginTop: 0, marginBottom: "16px" }}>
+        Cumulative Net Premium & Cash Flow
+      </h3>
+
       <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#24345f" />
-            <XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} tickFormatter={formatXAxis} stroke="#9fb3ff" tick={{ fontSize: 12 }} />
-            <YAxis stroke="#9fb3ff" tickFormatter={formatYAxis} tick={{ fontSize: 12 }} />
-            <Tooltip contentStyle={{ backgroundColor: "#1b2b4f", borderColor: "#24345f", color: "#fff", borderRadius: "6px" }} formatter={(val) => [fmt(val), "Net Cash Flow"]} labelFormatter={(ts) => `Date: ${formatXAxis(ts) || "Baseline"}`} />
+
+            <XAxis
+              dataKey="timestamp"
+              type="number"
+              domain={["dataMin", "dataMax"]}
+              tickFormatter={formatXAxis}
+              stroke="#9fb3ff"
+              tick={{ fontSize: 12 }}
+            />
+
+            <YAxis
+              stroke="#9fb3ff"
+              tickFormatter={formatYAxis}
+              tick={{ fontSize: 12 }}
+            />
+
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload || !payload.length) return null;
+
+                const data = payload[0].payload;
+                const dateStr = formatXAxis(data.timestamp) || "Baseline";
+                
+                // Split comma-separated labels into an array (if any exist)
+                const labelList = data.labels && data.labels !== "Baseline" 
+                  ? data.labels.split(", ") 
+                  : [];
+
+                return (
+                  <div
+                    style={{
+                      backgroundColor: "#1b2b4f",
+                      border: "1px solid #24345f",
+                      borderRadius: "6px",
+                      padding: "8px 12px",
+                      color: "#fff",
+                      maxWidth: "280px", // Prevents the tooltip from growing too wide
+                    }}
+                  >
+                    {/* Header Date */}
+                    <div style={{ fontWeight: "bold", marginBottom: "4px", fontSize: "13px" }}>
+                      Date: {dateStr}
+                    </div>
+
+                    {/* Cash Flow Value */}
+                    <div style={{ fontSize: "12px", marginBottom: "6px", color: "#10b981" }}>
+                      Cumulative Net: {fmt(data.cumulativePL)}
+                    </div>
+
+                    {/* Small Ticker / Campaign Contributor Labels */}
+                    {labelList.length > 0 && (
+                      <div
+                        style={{
+                          borderTop: "1px solid #24345f",
+                          paddingTop: "6px",
+                          marginTop: "4px",
+                        }}
+                      >
+                        <div style={{ fontSize: "10px", color: "#9fb3ff", marginBottom: "2px", fontWeight: "600" }}>
+                          Contributors:
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "11px",        // Smaller font size for tickers
+                            lineHeight: "1.3",
+                            color: "#cbd5e1",
+                            maxHeight: "120px",      // Scrollable if there are many transactions
+                            overflowY: "auto",
+                          }}
+                        >
+                          {labelList.map((item, idx) => (
+                            <div key={idx} style={{ marginBottom: "2px" }}>
+                              • {item}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
+            />
+
             <ReferenceLine y={0} stroke="#4a5568" strokeDasharray="3 3" />
-            <Area type="stepAfter" dataKey="cumulativePL" stroke="#10b981" fill="#10b981" fillOpacity={0.2} activeDot={{ r: 6 }} />
+
+            <Area
+              type="stepAfter"
+              dataKey="cumulativePL"
+              stroke="#10b981"
+              fill="#10b981"
+              fillOpacity={0.2}
+              activeDot={{ r: 6 }}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>

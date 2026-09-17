@@ -78,13 +78,23 @@ dbLocal.getAllCampaigns = async function () {
 
 dbLocal.addCampaign = async function (campaign) {
   const id = newId();
+  
+  // 1. Get the total number of campaigns ever created
+  const count = await dbLocal.campaigns.count();
+  
+  // 2. Generate the name (e.g., "AAPL #146"). 
+  // We use campaign.name as a fallback just in case you ever pass one manually.
+  const autoName = campaign.name || `${campaign.ticker} #${count + 1}`;
+
   await dbLocal.campaigns.put({
     id,
+    name: autoName, // Assign the generated name
     updatedAt: new Date().toISOString(),
     dirty: true,
     deleted: false,
     ...campaign
   });
+  
   return id;
 };
 

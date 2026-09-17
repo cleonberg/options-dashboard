@@ -80,49 +80,7 @@ export function getCampaignTimeline(legs) {
    Performance Series
 ------------------------------------------------------- */
 export function computeCampaignPLSeries(legs) {
-  const events = [];
-
-  for (const l of legs) {
-    const isOption = l.type.includes("call") || l.type.includes("put");
-    const multiplier = isOption ? 100 : 1;
-
-    const isSell = l.type.startsWith("sell_");
-    const isBuy  = l.type.startsWith("buy_");
-
-    // ⭐ Opening cash flow
-    if (l.openDate) {
-      let cash;
-      if (isSell) {
-        cash = l.openPrice * l.qty * multiplier;   // credit
-      } else if (isBuy) {
-        cash = -l.openPrice * l.qty * multiplier;  // debit
-      } else {
-        cash = -l.openPrice * l.qty;               // stock
-      }
-      events.push({ date: l.openDate, pl: cash });
-    }
-
-    // ⭐ Closing cash flow
-    if (l.closeDate) {
-      let cash;
-      if (isSell) {
-        cash = -l.closePrice * l.qty * multiplier; // debit
-      } else if (isBuy) {
-        cash = l.closePrice * l.qty * multiplier;  // credit
-      } else {
-        cash = l.closePrice * l.qty;               // stock
-      }
-      events.push({ date: l.closeDate, pl: cash });
-    }
-  }
-
-  events.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  let cumulative = 0;
-  return events.map(e => {
-    cumulative += e.pl;
-    return { date: e.date.slice(0, 10), cumulative };
-  });
+  return computeDailyCashFlowSeries(legs);
 }
 
 /* -------------------------------------------------------
@@ -435,7 +393,120 @@ export function getCampaignLabel(campaign, fallbackId = "") {
   }
   
   const baseName = campaign.name || campaign.ticker || "Unnamed";
-  const dateStr = campaign.startDate ? ` (${campaign.startDate})` : "";
   
-  return `${baseName}${dateStr}`;
+  return `${baseName}`;
+}
+
+/* -------------------------------------------------------
+   Shared Cash Flow Helpers
+------------------------------------------------------- */
+export function getLegMultiplier(leg) {
+  return leg.type?.includes("call") || leg.type?.includes("put") ? 100 : 1;
+}
+
+export function getCalendarDay(dateValue) {
+  if (!dateValue) return null;
+  if (typeof dateValue === "string") {
+    const match = dateValue.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  const d = new Date(dateValue);
+  if (isNaN(d.getTime())) return null;
+  
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/* -------------------------------------------------------
+   Updated Cash Flow Helpers in src/logic/logic.js
+------------------------------------------------------- */
+export function getLegCashFlowEvents(leg, campaign = null) {
+  const events = [];
+  const multiplier = getLegMultiplier(leg);
+  const typeStr = String(leg.type || "").toLowerCase();
+
+  const isStock = typeStr.includes("stock");
+  const isSell = typeStr.startsWith("sell") || typeStr.startsWith("short");
+
+  // Determine campaign label: Stored Name -> Ticker Fallback
+  const campaignName = campaign
+    ? (campaign.name || campaign.ticker)
+    : (leg.ticker || leg.symbol || "");
+
+  const legDesc = leg.type ? `${leg.type}${leg.strike ? ` $${leg.strike}` : ""}` : "";
+  const label = campaignName && legDesc ? `${campaignName} (${legDesc})` : campaignName || legDesc || "Leg";
+
+  // Opening Cash Flow
+  if (leg.openDate && leg.openPrice != null) {
+    if (!isStock) {
+      const cashFlow = isSell
+        ? Number(leg.openPrice) * Number(leg.qty || 1) * multiplier
+        : -Number(leg.openPrice) * Number(leg.qty || 1) * multiplier;
+      events.push({ date: leg.openDate, amount: cashFlow, label });
+    }
+  }
+
+  // Closing Cash Flow
+  if (leg.closeDate && leg.closePrice != null && !leg.isOpen) {
+    let cashFlow;
+    if (isStock) {
+      cashFlow = isSell
+        ? (Number(leg.openPrice) - Number(leg.closePrice)) * Number(leg.qty || 1)
+        : (Number(leg.closePrice) - Number(leg.openPrice)) * Number(leg.qty || 1);
+    } else {
+      cashFlow = isSell
+        ? -Number(leg.closePrice) * Number(leg.qty || 1) * multiplier
+        : Number(leg.closePrice) * Number(leg.qty || 1) * multiplier;
+    }
+    events.push({ date: leg.closeDate, amount: cashFlow, label });
+  }
+
+  return events;
+}
+
+export function computeDailyCashFlowSeries(legs = [], campaigns = []) {
+  const campaignMap = {};
+  if (Array.isArray(campaigns)) {
+    campaigns.forEach((c) => {
+      if (c?.id) campaignMap[c.id] = c;
+    });
+  }
+
+  const dailyMap = {};
+
+  legs.forEach((leg) => {
+    const campaign = campaignMap[leg.campaignId] || null;
+    const events = getLegCashFlowEvents(leg, campaign);
+
+    events.forEach((event) => {
+      const day = getCalendarDay(event.date);
+      if (!day) return;
+
+      if (!dailyMap[day]) {
+        dailyMap[day] = { amount: 0, labels: new Set() };
+      }
+
+      dailyMap[day].amount += event.amount;
+      if (event.label) {
+        dailyMap[day].labels.add(event.label);
+      }
+    });
+  });
+
+  const sortedDays = Object.keys(dailyMap).sort();
+  let cumulative = 0;
+
+  return sortedDays.map((date) => {
+    const netCashFlow = Number(dailyMap[date].amount.toFixed(2));
+    cumulative += netCashFlow;
+
+    return {
+      date,
+      netCashFlow,
+      cumulativePL: Number(cumulative.toFixed(2)),
+      labels: Array.from(dailyMap[date].labels).join(", "),
+    };
+  });
 }

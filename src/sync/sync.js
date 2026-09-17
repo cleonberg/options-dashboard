@@ -12,6 +12,7 @@ import {
 
 import { db } from "../firebase";        // if firebase.js is in src/
 import { dbLocal } from "../db/dexie";   // FIXED
+import { processDeletionQueue } from "./processDeletionQueue";
 
 /* -----------------------
    Helpers
@@ -183,6 +184,8 @@ export async function ensureInitialSync(uid) {
   } else {
     console.log("[TRACE] Dexie already has data — skipping initial pull");
   }
+
+  processDeletionQueue().catch(console.error);
 }
 
 export function startBackgroundSync(uid) {
@@ -347,6 +350,8 @@ export async function addLeg(uid, legFields) {
     console.error("[addLeg] push failed", err);
   }
 
+  await syncCampaignDates(uid, legFields.campaignId);
+
   return id;
 }
 
@@ -374,6 +379,8 @@ export async function editLeg(uid, leg) {
   } catch (err) {
     console.error("[editLeg] push failed", err);
   }
+
+  await syncCampaignDates(uid, leg.campaignId);
 }
 
 // src/sync/sync.js
@@ -412,6 +419,8 @@ export async function closeLeg(uid, leg, closePrice) {
   } catch (err) {
     console.error("[closeLeg] push failed", err);
   }
+
+  await syncCampaignDates(uid, leg.campaignId);
 
   return updated;
 }
@@ -470,6 +479,8 @@ export async function deleteLeg(uid, id) {
     createdAt: Date.now(),
     attempts: 0
   });
+
+  await syncCampaignDates(uid, existing.campaignId);
 
   console.log(`[deleteLeg] Queued leg ${id} for deletion`);
 }
@@ -557,30 +568,59 @@ export async function combineCampaigns(uid, sourceCampaignId, targetCampaignId) 
     throw new Error("Cannot combine a campaign into itself.");
   }
 
-  // 1. Fetch all legs associated with the source campaign from Dexie
+  // 1. Fetch all legs associated with the source campaign
   const sourceLegs = await dbLocal.legs
     .where("campaignId")
     .equals(sourceCampaignId)
     .toArray();
 
-  const now = Date.now();
-
-  // 2. Reassign each leg to the target campaign
+  // 2. Reassign each leg to the target campaign using editLeg for instant sync
   for (const leg of sourceLegs) {
-    const updatedLeg = {
+    await editLeg(uid, {
       ...leg,
-      campaignId: targetCampaignId,
-      updatedAt: now,
-      dirty: true,
-    };
-    
-    // Put updated leg into Dexie
-    await dbLocal.legs.put(updatedLeg);
-
-    // Optional: If you sync individual leg updates immediately, trigger that here, 
-    // or rely on your sync pipeline/forceSync to push the updated legs to Firebase.
+      campaignId: targetCampaignId
+    });
   }
 
   // 3. Delete or archive the source campaign
   await deleteCampaign(uid, sourceCampaignId);
+}
+
+/**
+ * Automatically calculates and updates a campaign's start and end dates 
+ * based on the open and close dates of its legs.
+ */
+export async function syncCampaignDates(uid, campaignId) {
+  if (!campaignId) return;
+
+  // 1. Fetch all non-deleted legs for this campaign
+  const legs = await dbLocal.legs
+    .where("campaignId")
+    .equals(campaignId)
+    .toArray();
+    
+  const activeLegs = legs.filter(l => !l.deleted);
+  if (activeLegs.length === 0) return;
+
+  // 2. Extract and sort the dates
+  const openDates = activeLegs.map(l => l.openDate).filter(Boolean).sort();
+  const closeDates = activeLegs.map(l => l.closeDate).filter(Boolean).sort();
+
+  // The earliest open date is the start of the campaign
+  const startDate = openDates.length > 0 ? openDates[0] : null;
+
+  // The campaign is only fully "ended" if EVERY leg has a closeDate
+  const isFullyClosed = closeDates.length === activeLegs.length;
+  
+  // If fully closed, the end date is the latest closeDate
+  const endDate = isFullyClosed && closeDates.length > 0 
+    ? closeDates[closeDates.length - 1] 
+    : null;
+
+  // 3. Update the campaign (this leverages your existing sync mutator)
+  await updateCampaign(uid, campaignId, {
+    startDate,
+    endDate,
+    status: isFullyClosed ? "closed" : "open"
+  });
 }

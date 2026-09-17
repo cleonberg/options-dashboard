@@ -28,9 +28,9 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
       const legsA = legs.filter((l) => String(l.campaignId) === String(a.id));
       const legsB = legs.filter((l) => String(l.campaignId) === String(b.id));
 
-      if (sortConfig.field === "ticker") {
-        aVal = a.ticker || "";
-        bVal = b.ticker || "";
+      if (sortConfig.field === "name") {
+        aVal = a.name || "";
+        bVal = b.name || "";
         return sortConfig.direction === "asc"
           ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
@@ -62,8 +62,8 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
         <table className="summary-table">
           <thead>
             <tr>
-              <th onClick={() => handleSort("ticker")} style={{ cursor: "pointer", userSelect: "none" }}>
-                Ticker & Strategy{getSortIndicator("ticker")}
+              <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Campaign{getSortIndicator("name")}
               </th>
               {/* Hidden on small screens */}
               <th className="hide-mobile">Legs Ratio</th>
@@ -108,7 +108,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
                 >
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
+                      <span style={{ fontWeight: "bold" }}>{c.name}</span>
                       <span className="strategy-badge">{strategy}</span>
                     </div>
                   </td>

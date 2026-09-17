@@ -102,7 +102,7 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
               >
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span style={{ fontWeight: "bold" }}>{c.ticker}</span>
+                    <span style={{ fontWeight: "bold" }}>{c.name}</span>
                     <span className="strategy-badge">{strategy}</span>
                   </div>
                 </td>

@@ -41,6 +41,7 @@ export default function PerformanceChart({
       return isNaN(t) ? null : t;
     };
 
+    // Single Campaign Mode
     if (mode === "single" || campaign) {
       const targetCampaign = campaign || closedCampaigns[0];
       if (!targetCampaign) return [];
@@ -55,11 +56,15 @@ export default function PerformanceChart({
 
       const openTimestamp = parseTimestamp(openDate) || Date.now();
 
+      // Read stored name directly
+      const campaignName = targetCampaign.name || targetCampaign.ticker;
+
       const timeline = [
         {
           timestamp: openTimestamp,
           dateStr: openDate || "Opened",
           cumulativePL: 0,
+          labels: "Baseline",
         },
       ];
 
@@ -88,6 +93,7 @@ export default function PerformanceChart({
             timestamp: ts,
             dateStr: dateStr,
             cumulativePL: Number(runningPL.toFixed(2)),
+            labels: campaignName,
           });
         }
       });
@@ -95,7 +101,7 @@ export default function PerformanceChart({
       return timeline;
     }
 
-    // Dashboard Mode
+    // Dashboard Mode (Multi-campaign timeline)
     const sortedClosed = [...closedCampaigns].sort(
       (a, b) => new Date(a.endDate || 0) - new Date(b.endDate || 0)
     );
@@ -110,11 +116,14 @@ export default function PerformanceChart({
         const dateStr = c.endDate || c.startDate;
         const ts = parseTimestamp(dateStr);
 
+        // Read stored name directly
+        const campaignName = c.name || c.ticker;
+
         return ts
           ? {
               timestamp: ts,
               dateStr: dateStr,
-              ticker: c.ticker,
+              labels: campaignName,
               pl: pl,
               cumulativePL: Number(cumulativePL.toFixed(2)),
             }
@@ -169,19 +178,62 @@ export default function PerformanceChart({
               tick={{ fontSize: 12 }}
             />
             <YAxis stroke="#9fb3ff" tickFormatter={formatYAxis} tick={{ fontSize: 12 }} />
+
             <Tooltip
-              contentStyle={{
-                backgroundColor: "#1b2b4f",
-                borderColor: "#24345f",
-                color: "#fff",
-                borderRadius: "6px",
+              content={({ active, payload }) => {
+                if (!active || !payload || !payload.length) return null;
+
+                const data = payload[0].payload;
+                const dateStr = formatXAxis(data.timestamp) || "Baseline";
+                const labelVal = data.labels || "";
+
+                return (
+                  <div
+                    style={{
+                      backgroundColor: "#1b2b4f",
+                      border: "1px solid #24345f",
+                      borderRadius: "6px",
+                      padding: "8px 12px",
+                      color: "#fff",
+                      maxWidth: "280px",
+                    }}
+                  >
+                    <div style={{ fontWeight: "bold", marginBottom: "4px", fontSize: "13px" }}>
+                      Date: {dateStr}
+                    </div>
+
+                    <div style={{ fontSize: "12px", marginBottom: "6px", color: "#3182ce" }}>
+                      Cumulative P/L: {fmt(data.cumulativePL)}
+                    </div>
+
+                    {labelVal && labelVal !== "Baseline" && (
+                      <div
+                        style={{
+                          borderTop: "1px solid #24345f",
+                          paddingTop: "6px",
+                          marginTop: "4px",
+                        }}
+                      >
+                        <div style={{ fontSize: "10px", color: "#9fb3ff", marginBottom: "2px", fontWeight: "600" }}>
+                          Campaign:
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            lineHeight: "1.3",
+                            color: "#cbd5e1",
+                          }}
+                        >
+                          • {labelVal}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
               }}
-              formatter={(val) => [fmt(val), "Cumulative P/L"]}
-              labelFormatter={(ts) => `Date: ${formatXAxis(ts)}`}
             />
+
             <ReferenceLine y={0} stroke="#4a5568" strokeDasharray="3 3" />
-            
-            {/* Enabled markers conditionally for single campaign mode */}
             <Area
               type="monotone"
               dataKey="cumulativePL"
