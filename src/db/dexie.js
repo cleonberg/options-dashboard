@@ -1,3 +1,4 @@
+// src/db/dexie.js
 import Dexie from "dexie";
 
 // Singleton: ensure Dexie is only created once (even under HMR + StrictMode)
@@ -24,27 +25,21 @@ if (!globalThis.__dbLocal) {
 
 const dbLocal = globalThis.__dbLocal;
 
-// -------------------------------------------------------
 // Helper: generate IDs
-// -------------------------------------------------------
 function newId() {
   return crypto.randomUUID();
 }
 
-// -------------------------------------------------------
-// Dirty helper
-// -------------------------------------------------------
+// Dirty helper — standardized to numeric timestamp (Date.now())
 export async function markDirty(table, id, changes) {
   await dbLocal[table].update(id, {
     ...changes,
     dirty: true,
-    updatedAt: new Date().toISOString()
+    updatedAt: Date.now()
   });
 }
 
-// -------------------------------------------------------
 // Deletion queue helpers
-// -------------------------------------------------------
 export async function queueDeletionJob(type, targetId) {
   await dbLocal.deletionJobs.add({
     type,
@@ -58,9 +53,7 @@ export async function getDeletionJobs() {
   return dbLocal.deletionJobs.toArray();
 }
 
-// -------------------------------------------------------
 // Hard delete helper
-// -------------------------------------------------------
 export async function hardDeleteLocalCampaignAndLegs(campaignId) {
   await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
     await dbLocal.legs.where('campaignId').equals(campaignId).delete();
@@ -68,9 +61,7 @@ export async function hardDeleteLocalCampaignAndLegs(campaignId) {
   });
 }
 
-// -------------------------------------------------------
 // Campaigns
-// -------------------------------------------------------
 dbLocal.getAllCampaigns = async function () {
   const all = await dbLocal.campaigns.toArray();
   return all.filter(c => !c.deleted);
@@ -78,37 +69,29 @@ dbLocal.getAllCampaigns = async function () {
 
 dbLocal.addCampaign = async function (campaign) {
   const id = newId();
-  
-  // 1. Get the total number of campaigns ever created
   const count = await dbLocal.campaigns.count();
-  
-  // 2. Generate the name (e.g., "AAPL #146"). 
-  // We use campaign.name as a fallback just in case you ever pass one manually.
-  const autoName = campaign.name || `${campaign.ticker} #${count + 1}`;
+  const autoName = campaign.name || `${campaign.ticker || "UNKNOWN"} #${count + 1}`;
 
   await dbLocal.campaigns.put({
     id,
-    name: autoName, // Assign the generated name
-    updatedAt: new Date().toISOString(),
+    name: autoName,
+    updatedAt: Date.now(),
     dirty: true,
     deleted: false,
     ...campaign
   });
-  
   return id;
 };
 
 dbLocal.updateCampaign = async function (id, changes) {
   await dbLocal.campaigns.update(id, {
     ...changes,
-    updatedAt: new Date().toISOString(),
+    updatedAt: Date.now(),
     dirty: true
   });
 };
 
-// -------------------------------------------------------
 // Legs
-// -------------------------------------------------------
 dbLocal.getAllLegs = async function () {
   const all = await dbLocal.legs.toArray();
   return all.filter(l => !l.deleted);
@@ -118,7 +101,7 @@ dbLocal.addLeg = async function (leg) {
   const id = newId();
   await dbLocal.legs.put({
     id,
-    updatedAt: new Date().toISOString(),
+    updatedAt: Date.now(),
     dirty: true,
     deleted: false,
     ...leg
@@ -129,7 +112,7 @@ dbLocal.addLeg = async function (leg) {
 dbLocal.updateLeg = async function (id, changes) {
   await dbLocal.legs.update(id, {
     ...changes,
-    updatedAt: new Date().toISOString(),
+    updatedAt: Date.now(),
     dirty: true
   });
 };

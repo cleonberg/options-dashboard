@@ -10,6 +10,7 @@ import {
   computeLegPL,
   getLegCashFlowEvents,
 } from "../logic/logic.js";
+import DateMigrationAdmin from "./admin/DateMigrationAdmin.jsx"; // <-- ✨ ADDED
 
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
@@ -687,6 +688,10 @@ export default function SettingsTab({ reloadAll }) {
         >
           Retroactively Rename All Campaigns
         </button>
+
+        <div className="border-t border-red-200 pt-4">
+          <DateMigrationAdmin uid={auth.currentUser?.uid} />
+        </div>
       </div>
 
       {/* 3. TRASH & RECOVERY */}
