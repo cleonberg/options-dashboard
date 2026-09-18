@@ -597,7 +597,7 @@ export default function DashboardTab({
           }`}
         >
           <div className="add-leg-content">
-            <div style={{ paddingBottom: "24px" }}>
+            <div style={{ paddingBottom: "24px" }}>              
               <CampaignForm
                 onSubmit={(campaignData) => {
                   onAddCampaign?.(campaignData);

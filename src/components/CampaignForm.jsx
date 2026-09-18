@@ -2,12 +2,7 @@
 import React, { useState } from "react";
 
 export default function CampaignForm({ initialData, onSubmit, onCancel }) {
-  // Get today's date formatted as YYYY-MM-DD
-  const today = new Date().toISOString().split("T")[0];
-  
-  // Use initialData if editing, otherwise default to empty/today
   const [ticker, setTicker] = useState(initialData?.ticker || "");
-  const [startDate, setStartDate] = useState(initialData?.startDate || today);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -20,7 +15,6 @@ export default function CampaignForm({ initialData, onSubmit, onCancel }) {
     // Pass the data back to the parent
     onSubmit({
       ticker: ticker.toUpperCase(),
-      startDate,
     });
   };
 
@@ -39,7 +33,7 @@ export default function CampaignForm({ initialData, onSubmit, onCancel }) {
       </h3>
       
       <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: "12px" }}>
+        <div style={{ marginBottom: "16px" }}>
           <label style={{ display: "block", marginBottom: "4px", fontWeight: "bold" }}>
             Ticker:
           </label>
@@ -49,18 +43,6 @@ export default function CampaignForm({ initialData, onSubmit, onCancel }) {
             onChange={(e) => setTicker(e.target.value)}
             placeholder="e.g. AAPL"
             style={{ padding: "6px", width: "100%", maxWidth: "200px" }}
-          />
-        </div>
-
-        <div style={{ marginBottom: "16px" }}>
-          <label style={{ display: "block", marginBottom: "4px", fontWeight: "bold" }}>
-            Start Date:
-          </label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={{ padding: "6px" }}
           />
         </div>
 

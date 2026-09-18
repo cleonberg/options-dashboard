@@ -52,16 +52,25 @@ export default function SettingsTab({ reloadAll }) {
   }
 
   // ---------- Option 1: Undelete Logic ----------
-  async function handleUndelete(campaign) {
-    await dbLocal.campaigns.update(campaign.id, {
-      deleted: false,
-      dirty: true,
-      updatedAt: Date.now(), // Ensure number format here too
-    });
-    alert(`Restored ${campaign.Ticker || "Campaign"}`);
-    loadDeletedCampaigns(); // Refresh the list
-    if (typeof reloadAll === "function") reloadAll(); // Refresh dashboard stats
+async function handleUndelete(campaign) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    alert("You must be logged in to restore campaigns.");
+    return;
   }
+
+  try {
+    // Uses updateCampaign from sync.js to update Dexie AND sync to Firestore
+    await updateCampaign(uid, campaign.id, { deleted: false });
+
+    alert(`Restored ${campaign.ticker || campaign.Ticker || "Campaign"}`);
+    await loadDeletedCampaigns(); // Refresh the list of trash items
+    if (typeof reloadAll === "function") reloadAll(); // Refresh dashboard stats
+  } catch (err) {
+    console.error("Failed to undelete campaign:", err);
+    alert("Error restoring campaign.");
+  }
+}
 
   function formatExportDate(value) {
     if (value == null || value === "") return "";

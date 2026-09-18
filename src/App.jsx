@@ -11,8 +11,8 @@ import { startAuth } from "./auth.js";
 
 import { computeDashboardSummary } from "./logic/logic.js";
 
-// Import our newly created sync initializers
-import { ensureInitialSync, startBackgroundSync, forceSync } from "./sync/sync.js";
+// Added createCampaign to imports
+import { ensureInitialSync, startBackgroundSync, forceSync, createCampaign } from "./sync/sync.js";
 
 import { dbLocal } from "./db/dexie.js";
 import "./styles/styles.css";
@@ -21,12 +21,10 @@ export default function App() {
   // ---------- Auth State ----------
   const [uid, setUid] = useState(null);
 
-  // ---------- Reactive Database State (Replaces useState) ----------
-  // useLiveQuery automatically updates these whenever Dexie changes
+  // ---------- Reactive Database State ----------
   const campaigns = useLiveQuery(() => dbLocal.getAllCampaigns(), []) || [];
   const legs = useLiveQuery(() => dbLocal.getAllLegs(), []) || [];
 
-  // Automatically track dirty items for the Header badge
   const dirtyCount = useLiveQuery(async () => {
     const c = await dbLocal.campaigns.filter(c => c.dirty === true).count();
     const l = await dbLocal.legs.filter(l => l.dirty === true).count();
@@ -53,12 +51,10 @@ export default function App() {
   const [dashboardEndDateFilter, setDashboardEndDateFilter] = useState("");
 
   // ---------- Derived State ----------
-  // Automatically recalculates whenever campaigns or legs change
   const dashboardSummary = useMemo(() => {
     return computeDashboardSummary(campaigns, legs);
   }, [campaigns, legs]);
 
-  // Auto-select first campaign if we have data but no selection
   useEffect(() => {
     if (campaigns.length > 0 && !selectedCampaignId) {
       setSelectedCampaignId(campaigns[0].id);
@@ -80,21 +76,14 @@ export default function App() {
 
     (async () => {
       setSyncStatus("syncing");
-      
-      // 1. Pull data if Dexie is completely empty
       await ensureInitialSync(uid);
-      
-      // 2. Push any offline changes made before reload
       await forceSync(uid);
-      
-      // 3. Start real-time Firebase listeners to silently update Dexie in the background
       unsubscribeSync = startBackgroundSync(uid);
       
       setSyncStatus("synced");
       setLastSync(new Date());
     })();
 
-    // Stop listening to Firebase if the user logs out
     return () => unsubscribeSync();
   }, [uid]);
 
@@ -102,18 +91,24 @@ export default function App() {
   async function syncNow() {
     if (!uid) return;
     setSyncStatus("syncing");
-    
-    // We only need to push local changes. The snapshot listeners handle pulling automatically.
     await forceSync(uid); 
-    
     setSyncStatus("synced");
     setLastSync(new Date());
   }
 
   const handleSelectCampaign = (id) => {
     setSelectedCampaignId(id);
-    setActiveTab("campaigns"); // Or "detail" depending on your tab name
+    setActiveTab("campaigns");
   };  
+
+  // ---------- Campaign Handlers ----------
+  const handleAddCampaign = async (campaignData) => {
+    if (!uid) {
+      console.error("Cannot add campaign: User is not authenticated.");
+      return;
+    }
+    await createCampaign(uid, campaignData);
+  };
 
   // ---------- Render Tabs ----------
   function renderTab() {
@@ -126,6 +121,7 @@ export default function App() {
             campaigns={campaigns}
             legs={legs}
             onSelectCampaign={handleSelectCampaign}
+            onAddCampaign={handleAddCampaign}
             searchTerm={dashboardSearchTerm}
             setSearchTerm={setDashboardSearchTerm}
             startDateFilter={dashboardStartDateFilter}
@@ -138,7 +134,7 @@ export default function App() {
       case "trades":
         return (
           <AllLegsTab
-            campaigns={campaigns} // <-- ADD THIS LINE
+            campaigns={campaigns}
             legs={legs} 
             uid={uid} 
           />
@@ -166,12 +162,11 @@ export default function App() {
             rollOpenPrice={rollOpenPrice}
             setRollOpenPrice={setRollOpenPrice}
             uid={uid}
-            // Note: reloadAll, setLegs, and setCampaigns are entirely removed!
           />
         );
 
       case "settings":
-        return <SettingsTab />; // reloadAll removed
+        return <SettingsTab />;
 
       default:
         return <div className="card">Unknown tab.</div>;

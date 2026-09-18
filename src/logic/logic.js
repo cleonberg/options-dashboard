@@ -1,4 +1,8 @@
-import dbLocal from "../db/dexie.js";
+// import dbLocal from "../db/dexie.js";
+
+import { 
+  updateCampaign, 
+} from "../sync/sync.js";
 
 /* -------------------------------------------------------
    Formatting Helpers
@@ -86,63 +90,13 @@ export function computeCampaignPLSeries(legs) {
 /* -------------------------------------------------------
    Campaign Handlers
 ------------------------------------------------------- */
-export async function reopenCampaign(campaignId) {
-  await dbLocal.updateCampaign(campaignId, {
+export async function reopenCampaign(uid, campaignId) {
+  if (!uid) return;
+  
+  await updateCampaign(uid, campaignId, {
     status: "open",
     endDate: null
   });
-}
-
-export async function handleSplitCampaign(campaignId, legs, campaigns, n) {
-  const base = campaigns.find(c => c.id === campaignId);
-  if (!base) return;
-
-  const legsForCampaign = legs.filter(l => l.campaignId === campaignId);
-  const chunkSize = Math.ceil(legsForCampaign.length / n);
-
-  const newIds = [];
-  for (let i = 0; i < n; i++) {
-    const newId = await dbLocal.addCampaign({
-      ticker: base.ticker,
-      status: "open",
-      notes: `${base.notes || ""} (split ${i + 1}/${n})`,
-      tags: base.tags || []
-    });
-    newIds.push(newId);
-  }
-
-  for (let i = 0; i < legsForCampaign.length; i++) {
-    const leg = legsForCampaign[i];
-    const idx = Math.floor(i / chunkSize);
-    const targetId = newIds[Math.min(idx, newIds.length - 1)];
-    await dbLocal.updateLeg(leg.id, { campaignId: targetId });
-  }
-
-  await dbLocal.updateCampaign(campaignId, { status: "closed" });
-}
-
-export async function handleCombineCampaign(ids, campaigns, legs) {
-  const validIds = ids.filter(id => campaigns.some(c => c.id === id));
-  if (validIds.length < 2) return null;
-
-  const base = campaigns.find(c => c.id === validIds[0]);
-
-  const newId = await dbLocal.addCampaign({
-    ticker: base.ticker,
-    status: "open",
-    notes: `${base.notes || ""} (combined ${validIds.join(", ")})`,
-    tags: base.tags || []
-  });
-
-  for (const leg of legs.filter(l => validIds.includes(l.campaignId))) {
-    await dbLocal.updateLeg(leg.id, { campaignId: newId });
-  }
-
-  for (const id of validIds) {
-    await dbLocal.updateCampaign(id, { status: "closed" });
-  }
-
-  return newId;
 }
 
 /* -------------------------------------------------------

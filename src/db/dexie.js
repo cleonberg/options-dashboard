@@ -25,41 +25,41 @@ if (!globalThis.__dbLocal) {
 
 const dbLocal = globalThis.__dbLocal;
 
-// Helper: generate IDs
-function newId() {
-  return crypto.randomUUID();
-}
+// // Helper: generate IDs
+// function newId() {
+//   return crypto.randomUUID();
+// }
 
-// Dirty helper — standardized to numeric timestamp (Date.now())
-export async function markDirty(table, id, changes) {
-  await dbLocal[table].update(id, {
-    ...changes,
-    dirty: true,
-    updatedAt: Date.now()
-  });
-}
+// // Dirty helper — standardized to numeric timestamp (Date.now())
+// export async function markDirty(table, id, changes) {
+//   await dbLocal[table].update(id, {
+//     ...changes,
+//     dirty: true,
+//     updatedAt: Date.now()
+//   });
+// }
 
-// Deletion queue helpers
-export async function queueDeletionJob(type, targetId) {
-  await dbLocal.deletionJobs.add({
-    type,
-    targetId,
-    createdAt: Date.now(),
-    attempts: 0
-  });
-}
+// // Deletion queue helpers
+// export async function queueDeletionJob(type, targetId) {
+//   await dbLocal.deletionJobs.add({
+//     type,
+//     targetId,
+//     createdAt: Date.now(),
+//     attempts: 0
+//   });
+// }
 
-export async function getDeletionJobs() {
-  return dbLocal.deletionJobs.toArray();
-}
+// export async function getDeletionJobs() {
+//   return dbLocal.deletionJobs.toArray();
+// }
 
-// Hard delete helper
-export async function hardDeleteLocalCampaignAndLegs(campaignId) {
-  await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
-    await dbLocal.legs.where('campaignId').equals(campaignId).delete();
-    await dbLocal.campaigns.where('id').equals(campaignId).delete();
-  });
-}
+// // Hard delete helper
+// export async function hardDeleteLocalCampaignAndLegs(campaignId) {
+//   await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
+//     await dbLocal.legs.where('campaignId').equals(campaignId).delete();
+//     await dbLocal.campaigns.where('id').equals(campaignId).delete();
+//   });
+// }
 
 // Campaigns
 dbLocal.getAllCampaigns = async function () {
@@ -67,29 +67,13 @@ dbLocal.getAllCampaigns = async function () {
   return all.filter(c => !c.deleted);
 };
 
-dbLocal.addCampaign = async function (campaign) {
-  const id = newId();
-  const count = await dbLocal.campaigns.count();
-  const autoName = campaign.name || `${campaign.ticker || "UNKNOWN"} #${count + 1}`;
-
-  await dbLocal.campaigns.put({
-    id,
-    name: autoName,
-    updatedAt: Date.now(),
-    dirty: true,
-    deleted: false,
-    ...campaign
-  });
-  return id;
-};
-
-dbLocal.updateCampaign = async function (id, changes) {
-  await dbLocal.campaigns.update(id, {
-    ...changes,
-    updatedAt: Date.now(),
-    dirty: true
-  });
-};
+// dbLocal.updateCampaign = async function (id, changes) {
+//   await dbLocal.campaigns.update(id, {
+//     ...changes,
+//     updatedAt: Date.now(),
+//     dirty: true
+//   });
+// };
 
 // Legs
 dbLocal.getAllLegs = async function () {
@@ -97,25 +81,25 @@ dbLocal.getAllLegs = async function () {
   return all.filter(l => !l.deleted);
 };
 
-dbLocal.addLeg = async function (leg) {
-  const id = newId();
-  await dbLocal.legs.put({
-    id,
-    updatedAt: Date.now(),
-    dirty: true,
-    deleted: false,
-    ...leg
-  });
-  return id;
-};
+// dbLocal.addLeg = async function (leg) {
+//   const id = newId();
+//   await dbLocal.legs.put({
+//     id,
+//     updatedAt: Date.now(),
+//     dirty: true,
+//     deleted: false,
+//     ...leg
+//   });
+//   return id;
+// };
 
-dbLocal.updateLeg = async function (id, changes) {
-  await dbLocal.legs.update(id, {
-    ...changes,
-    updatedAt: Date.now(),
-    dirty: true
-  });
-};
+// dbLocal.updateLeg = async function (id, changes) {
+//   await dbLocal.legs.update(id, {
+//     ...changes,
+//     updatedAt: Date.now(),
+//     dirty: true
+//   });
+// };
 
 export default dbLocal;
 export { dbLocal };
