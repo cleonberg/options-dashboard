@@ -1,5 +1,6 @@
 // DashboardTab.jsx
 import React, { useState, useMemo } from "react";
+import FilterBar from "./FilterBar.jsx";
 import {
   fmt,
   cashClass,
@@ -73,42 +74,6 @@ export default function DashboardTab({
   const [showCombineModal, setShowCombineModal] = useState(false);
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
   const [activeChart, setActiveChart] = useState("cashflow");
-
-  const handleQuickFilter = (preset) => {
-    const now = new Date();
-    let start = "";
-    let end = toISODateStr(now);
-
-    if (preset === "thisWeek") {
-      start = toISODateStr(
-        new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate() - now.getDay()
-        )
-      );
-    } else if (preset === "last30") {
-      start = toISODateStr(
-        new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate() - 30
-        )
-      );
-    } else if (preset === "thisMonth") {
-      start = toISODateStr(
-        new Date(now.getFullYear(), now.getMonth(), 1)
-      );
-    } else if (preset === "ytd") {
-      start = toISODateStr(new Date(now.getFullYear(), 0, 1));
-    } else if (preset === "all") {
-      start = "";
-      end = "";
-    }
-
-    setStartDateFilter?.(start);
-    setEndDateFilter?.(end);
-  };
 
   // Search filter only. Date filters are applied to transaction dates below.
   const searchFilteredCampaigns = useMemo(() => {
@@ -341,167 +306,20 @@ export default function DashboardTab({
   return (
     <div className="dashboard-tab">
 
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "16px"
-        }}
-      >
-        <h3 style={{ margin: 0 }}>Dashboard</h3>
-      </div>
-
       {/* Filters */}
-      <div style={{ marginBottom: "20px" }}>
-        <div
-          className="form-row"
-          style={{
-            display: "flex",
-            gap: "12px",
-            flexWrap: "wrap",
-            alignItems: "center"
-          }}
-        >
-          <input
-            type="text"
-            className="input"
-            placeholder="Filter ticker or symbol..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: "100%",
-              maxWidth: "220px",
-              padding: "8px 12px"
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <label
-              style={{
-                fontSize: "12px",
-                color: "#9fb3ff",
-                fontWeight: "bold"
-              }}
-            >
-              From:
-            </label>
-
-            <input
-              type="date"
-              className="input"
-              value={startDateFilter}
-              onChange={(e) => setStartDateFilter(e.target.value)}
-              style={{ padding: "8px 12px" }}
-            />
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <label
-              style={{
-                fontSize: "12px",
-                color: "#9fb3ff",
-                fontWeight: "bold"
-              }}
-            >
-              To:
-            </label>
-
-            <input
-              type="date"
-              className="input"
-              value={endDateFilter}
-              onChange={(e) => setEndDateFilter(e.target.value)}
-              style={{ padding: "8px 12px" }}
-            />
-          </div>
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => handleQuickFilter("all")}
-              style={{
-                padding: "8px 12px",
-                cursor: "pointer"
-              }}
-            >
-              Clear Filters
-            </button>
-          )}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            alignItems: "center",
-            marginTop: "10px",
-            flexWrap: "wrap"
-          }}
-        >
-          <span
-            style={{
-              fontSize: "12px",
-              color: "#9fb3ff",
-              fontWeight: "bold"
-            }}
-          >
-            Quick Presets:
-          </span>
-
-          {[
-            ["thisWeek", "This Week"],
-            ["last30", "Last 30 Days"],
-            ["thisMonth", "This Month"],
-            ["ytd", "YTD"],
-            ["all", "All Time"]
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className="secondary"
-              onClick={() => handleQuickFilter(value)}
-              style={{
-                padding: "4px 8px",
-                fontSize: "12px",
-                cursor: "pointer"
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="card">
+        <FilterBar
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          startDateFilter={startDateFilter}
+          setStartDateFilter={setStartDateFilter}
+          endDateFilter={endDateFilter}
+          setEndDateFilter={setEndDateFilter}
+        />
       </div>
 
       {/* Metrics */}
       <div style={{ marginBottom: "24px" }}>
-        <div
-          style={{
-            fontSize: "12px",
-            color: "#9fb3ff",
-            marginBottom: "8px",
-            fontWeight: "bold"
-          }}
-        >
-          {hasActiveFilters
-            ? "Metrics (Filtered):"
-            : "All Transactions Metrics:"}
-        </div>
-
         <div className="summary-grid-cards">
 
           {/* Transaction Summary */}
