@@ -19,7 +19,7 @@ export default function Header({ syncStatus, lastSync, dirtyCount, syncNow }) {
   return (
     <div className="app-header">
       <div className="header-left">
-        <h2>Options Dashboard</h2>
+        <h2>ThetaTracker</h2>
       </div>
 
       <div className="header-right">
