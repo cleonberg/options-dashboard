@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/options-dashboard/sw.js', { scope: '/options-dashboard/' })})}
