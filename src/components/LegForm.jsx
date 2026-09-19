@@ -1,5 +1,13 @@
 import React, { useState } from "react";
 
+// Helper: Get local YYYY-MM-DD date without UTC timezone rollover
+const getLocalDateStr = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export default function LegForm({ selectedCampaign, onAddLeg }) {
   const [type, setType] = useState("sell_put");
   const [qty, setQty] = useState("");
@@ -7,21 +15,17 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
   const [expiry, setExpiry] = useState("");
   const [openPrice, setOpenPrice] = useState("");
   const [notes, setNotes] = useState("");
-  const [openDate, setOpenDate] = useState(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [openDate, setOpenDate] = useState(getLocalDateStr());
 
   if (!selectedCampaign) {
     return <div className="card">No campaign selected.</div>;
   }
 
-  // Determine if the currently selected type is an option
   const isOption = !type.includes("stock");
 
   async function submit(e) {
     e.preventDefault();
 
-    // UPDATE: Only require strike and expiry if it is an option
     if (!qty || !openPrice || (isOption && (!strike || !expiry))) {
       alert("Please complete all required fields.");
       return;
@@ -32,15 +36,14 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
       ticker: selectedCampaign.ticker,
       type,
       qty: Number(qty),
-      // If it's a stock, save strike/expiry as null or empty string so we don't save junk data
-      strike: isOption ? strike : null,
+      strike: isOption ? Number(strike) : null,
       expiry: isOption ? expiry : null,
       openPrice: Number(openPrice),
       closePrice: null,
       closeDate: null,
       isOpen: true,
       notes,
-      openDate: new Date(openDate).toISOString()
+      openDate, // FIXED: Passes clean YYYY-MM-DD string consistently
     };
 
     await onAddLeg(leg);
@@ -51,7 +54,7 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
     setExpiry("");
     setOpenPrice("");
     setNotes("");
-    setOpenDate(new Date().toISOString().slice(0, 10));
+    setOpenDate(getLocalDateStr());
   }
 
   return (
@@ -62,7 +65,7 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
         <select
           className="input"
           value={type}
-          onChange={e => setType(e.target.value)}
+          onChange={(e) => setType(e.target.value)}
         >
           <option value="sell_call">Sell Call</option>
           <option value="sell_put">Sell Put</option>
@@ -78,24 +81,23 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
           className="input"
           placeholder="Qty"
           value={qty}
-          onChange={e => setQty(e.target.value)}
+          onChange={(e) => setQty(e.target.value)}
         />
 
-        {/* CONDITIONAL RENDER: Wrap Strike and Expiry */}
         {isOption && (
           <>
             <input
               className="input"
               placeholder="Strike"
               value={strike}
-              onChange={e => setStrike(e.target.value)}
+              onChange={(e) => setStrike(e.target.value)}
             />
 
             <input
               className="input"
               type="date"
               value={expiry}
-              onChange={e => setExpiry(e.target.value)}
+              onChange={(e) => setExpiry(e.target.value)}
             />
           </>
         )}
@@ -104,7 +106,7 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
           className="input"
           placeholder="Open price"
           value={openPrice}
-          onChange={e => setOpenPrice(e.target.value)}
+          onChange={(e) => setOpenPrice(e.target.value)}
         />
       </div>
 
@@ -113,14 +115,14 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
           className="input"
           type="date"
           value={openDate}
-          onChange={e => setOpenDate(e.target.value)}
+          onChange={(e) => setOpenDate(e.target.value)}
         />
 
         <input
           className="input"
           placeholder="Notes"
           value={notes}
-          onChange={e => setNotes(e.target.value)}
+          onChange={(e) => setNotes(e.target.value)}
         />
       </div>
 

@@ -2,14 +2,32 @@ import React, { useState, useEffect, useMemo } from "react";
 import { fmt, cashClass, computeLegPL, getCampaignLabel } from "../logic/logic.js";
 import { editLeg, reopenLeg, rollLeg, deleteLeg } from "../sync/sync.js";
 
+// Helper: Get local YYYY-MM-DD date without UTC timezone rollover
+const getLocalDateStr = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+// Helper: Safely format dates without shifting timezones
+const formatDate = (dateVal) => {
+  if (!dateVal) return "";
+  if (typeof dateVal === "string" && dateVal.length >= 10 && dateVal.includes("-")) {
+    return dateVal.slice(0, 10);
+  }
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return "";
+  return getLocalDateStr(d);
+};
+
 export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadAll }) {
   const [expanded, setExpanded] = useState(false);
-
-  // 'close' | 'roll' | null
   const [activeAction, setActiveAction] = useState(null);
 
+  const todayStr = getLocalDateStr();
+
   // Close Form State
-  const todayStr = new Date().toISOString().slice(0, 10);
   const [closeDate, setCloseDate] = useState(todayStr);
   const [closePrice, setClosePrice] = useState("");
 
@@ -18,7 +36,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
   const [rollClosePrice, setRollClosePrice] = useState("");
   const [rollNewQty, setRollNewQty] = useState(leg.qty ?? 1);
   const [rollNewStrike, setRollNewStrike] = useState(leg.strike ?? "");
-  const [rollNewExpiry, setRollNewExpiry] = useState(leg.expiry ?? "");
+  const [rollNewExpiry, setRollNewExpiry] = useState(formatDate(leg.expiry));
   const [rollNewOpenPrice, setRollNewOpenPrice] = useState("");
 
   const pl = computeLegPL(leg);
@@ -33,17 +51,9 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
     if (reloadAll) reloadAll();
   }
 
-  const formatDate = (dateVal) => {
-    if (!dateVal) return "";
-    const d = new Date(dateVal);
-    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
-  };
-
-  // 🔍 Match campaign for collapsed badge display
   const matchedCampaign = campaigns.find((c) => c.id === leg.campaignId);
   const campaignLabel = getCampaignLabel(matchedCampaign, leg.campaignId);
 
-  // 🛠️ Tooltip text
   const tooltipText = useMemo(() => {
     if (!leg.campaignId || !allLegs.length) return "";
     const relatedLegs = allLegs.filter((l) => l.campaignId === leg.campaignId);
@@ -52,7 +62,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
     const legStrings = relatedLegs.map((l) => {
       const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
       const strikeStr = l.strike ? ` @ ${l.strike}` : "";
-      const expStr = l.expiry ? ` (Exp: ${l.expiry})` : "";
+      const expStr = l.expiry ? ` (Exp: ${formatDate(l.expiry)})` : "";
       return `${status} | ${l.qty} ${l.type}${strikeStr}${expStr}`;
     });
 
@@ -69,25 +79,22 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
   const openDateStr = formatDate(leg.openDate);
   const closeDateStr = formatDate(leg.closeDate);
 
-  // Opens Close Form
   const handleOpenCloseForm = () => {
-    setCloseDate(new Date().toISOString().slice(0, 10));
+    setCloseDate(getLocalDateStr());
     setClosePrice("");
     setActiveAction("close");
   };
 
-  // Opens Roll Form
   const handleOpenRollForm = () => {
-    setRollDate(new Date().toISOString().slice(0, 10));
+    setRollDate(getLocalDateStr());
     setRollClosePrice("");
     setRollNewQty(leg.qty ?? 1);
     setRollNewStrike(leg.strike ?? "");
-    setRollNewExpiry(leg.expiry ?? "");
+    setRollNewExpiry(formatDate(leg.expiry)); // FIXED: Format expiry for date input
     setRollNewOpenPrice("");
     setActiveAction("roll");
   };
 
-  // Confirm Close Action
   const handleConfirmClose = async (e) => {
     e.preventDefault();
     await editLeg(uid, {
@@ -100,7 +107,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
     if (reloadAll) reloadAll();
   };
 
-  // Confirm Roll Action
   const handleConfirmRoll = async (e) => {
     e.preventDefault();
     await rollLeg(uid, leg, {
@@ -110,7 +116,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
       openPrice: rollNewOpenPrice === "" ? null : Number(rollNewOpenPrice),
       qty: rollNewQty === "" ? leg.qty : Number(rollNewQty),
       strike: isOption && rollNewStrike !== "" ? Number(rollNewStrike) : leg.strike,
-      expiry: isOption ? rollNewExpiry : leg.expiry,
+      expiry: isOption ? rollNewExpiry : formatDate(leg.expiry),
     });
     setActiveAction(null);
     if (reloadAll) reloadAll();
@@ -118,14 +124,13 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
 
   return (
     <div className="leg-row">
-      {/* --- Collapsed summary row --- */}
       <div
         className="leg-summary"
         onClick={toggle}
         style={{
           cursor: "pointer",
           display: "flex",
-          justify: "space-between",
+          justifyContent: "space-between",
           alignItems: "center",
           padding: "8px 12px",
         }}
@@ -160,7 +165,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
             </span>
 
             <span style={{ fontSize: "12px", color: "#a1a1aa" }}>
-              {leg.expiry ? `(Exp: ${leg.expiry})` : ""}
+              {leg.expiry ? `(Exp: ${formatDate(leg.expiry)})` : ""}
             </span>
           </div>
 
@@ -185,7 +190,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
         </div>
       </div>
 
-      {/* --- Expanded detail section --- */}
       {expanded && (
         <div className="leg-details">
           {campaignOptions.length > 0 && (
@@ -231,7 +235,12 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
                 onChange={(v) => update("strike", v === "" ? null : Number(v))}
               />
 
-              <EditableField label="Expiry" value={leg.expiry} type="date" onChange={(v) => update("expiry", v)} />
+              <EditableField
+                label="Expiry"
+                value={formatDate(leg.expiry)} // FIXED: Formatted expiry for input[type="date"]
+                type="date"
+                onChange={(v) => update("expiry", v)}
+              />
             </>
           )}
 
@@ -249,7 +258,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
             onChange={(v) => update("openPrice", v === "" ? null : Number(v))}
           />
 
-          {/* 🔒 Close Date & Close Price are strictly hidden UNTIL the leg is closed */}
           {!leg.isOpen && (
             <>
               <EditableField
@@ -270,7 +278,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
 
           <EditableField label="Notes" value={leg.notes} type="textarea" onChange={(v) => update("notes", v)} />
 
-          {/* Inline Action Form: CLOSE */}
           {activeAction === "close" && (
             <form onSubmit={handleConfirmClose} className="action-form">
               <h4>Close Leg</h4>
@@ -307,7 +314,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
             </form>
           )}
 
-          {/* Inline Action Form: ROLL */}
           {activeAction === "roll" && (
             <form onSubmit={handleConfirmRoll} className="action-form">
               <h4>Roll Leg</h4>
@@ -386,7 +392,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
             </form>
           )}
 
-          {/* Action Buttons */}
           {!activeAction && (
             <div className="leg-actions" style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
               {leg.isOpen ? (
@@ -425,7 +430,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
   );
 }
 
-// --- Upgraded EditableField ---
 function EditableField({ label, value, type = "text", options = [], onChange }) {
   const [localValue, setLocalValue] = useState(value ?? "");
 

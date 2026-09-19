@@ -13,6 +13,7 @@ import {
 import { db } from "../firebase";
 import { dbLocal } from "../db/dexie";
 import { processDeletionQueue } from "./processDeletionQueue";
+import { toMillis } from "./utils/firestoreUtils";
 
 /* -----------------------
    Helpers
@@ -114,7 +115,7 @@ export async function pullAllFromFirestore(uid) {
 export function subscribeToCampaigns(uid) {
   const qCampaigns = query(collection(db, "users", uid, "campaigns"));
 
-  return onSnapshot(qCampaigns, async snap => {
+  return onSnapshot(qCampaigns, async (snap) => {
     // Process only what changed, avoiding full collection rewrites
     for (const change of snap.docChanges()) {
       const id = change.doc.id;
@@ -124,7 +125,15 @@ export function subscribeToCampaigns(uid) {
       if (localRecord && localRecord.dirty) continue;
 
       if (change.type === "added" || change.type === "modified") {
-        const data = normalizeCampaign({ id, ...change.doc.data() });
+        const raw = change.doc.data();
+        const data = normalizeCampaign({
+          ...raw,
+          id,
+          dirty: false,
+          updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+          serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
+          clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
+        });
         await dbLocal.campaigns.put(data);
       } else if (change.type === "removed") {
         await dbLocal.campaigns.delete(id);
@@ -136,15 +145,24 @@ export function subscribeToCampaigns(uid) {
 export function subscribeToLegs(uid) {
   const qLegs = query(collection(db, "users", uid, "legs"));
 
-  return onSnapshot(qLegs, async snap => {
+  return onSnapshot(qLegs, async (snap) => {
     for (const change of snap.docChanges()) {
       const id = change.doc.id;
       const localRecord = await dbLocal.legs.get(id);
 
+      // The Golden Rule: Never overwrite a local dirty record
       if (localRecord && localRecord.dirty) continue;
 
       if (change.type === "added" || change.type === "modified") {
-        const data = normalizeLeg({ id, ...change.doc.data() });
+        const raw = change.doc.data();
+        const data = normalizeLeg({
+          ...raw,
+          id,
+          dirty: false,
+          updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+          serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
+          clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
+        });
         await dbLocal.legs.put(data);
       } else if (change.type === "removed") {
         await dbLocal.legs.delete(id);
@@ -326,7 +344,10 @@ export async function addLeg(uid, legFields) {
     closed: false,
     ...legFields,
     openDate: legFields?.openDate ?? now,
+    closeDate: null,
+    closePrice: null,
     updatedAt: now,
+    clientUpdatedAt: now,
     deleted: false,
     dirty: true,
   });
@@ -338,6 +359,7 @@ export async function addLeg(uid, legFields) {
       ...leg,
       dirty: false,
       updatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
     });
     await dbLocal.legs.update(id, { dirty: false });
   } catch (err) {
@@ -363,6 +385,7 @@ export async function editLeg(uid, leg) {
       ...updated,
       dirty: false,
       updatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
     });
     await dbLocal.legs.update(updated.id, { dirty: false });
   } catch (err) {
@@ -583,5 +606,21 @@ export async function syncCampaignDates(uid, campaignId) {
     startDate,
     endDate,
     status: isFullyClosed ? "closed" : "open"
+  });
+}
+
+
+
+export async function cleanupDexieTimestamps() {
+  await dbLocal.legs.toCollection().modify((leg) => {
+    leg.updatedAt = toMillis(leg.updatedAt) ?? Date.now();
+    leg.clientUpdatedAt = toMillis(leg.clientUpdatedAt) ?? leg.updatedAt;
+    leg.serverUpdatedAt = toMillis(leg.serverUpdatedAt) ?? leg.updatedAt; // 👈 Added
+  });
+
+  await dbLocal.campaigns.toCollection().modify((campaign) => {
+    campaign.updatedAt = toMillis(campaign.updatedAt) ?? Date.now();
+    campaign.clientUpdatedAt = toMillis(campaign.clientUpdatedAt) ?? campaign.updatedAt;
+    campaign.serverUpdatedAt = toMillis(campaign.serverUpdatedAt) ?? campaign.updatedAt; // 👈 Added
   });
 }

@@ -1,19 +1,20 @@
+import { auth } from "../auth"; // Or pass uid as a parameter to buildImportData
+
 function uuidv4() {
   return crypto.randomUUID();
 }
 
 function normalizeDate(d) {
   if (!d) return null;
-  if (d.includes("-")) return d; // Assumes ISO format like YYYY-MM-DD
-  
-  const [m, day, y] = d.split("/");
+  if (typeof d === "string" && d.includes("-")) return d; // Assumes YYYY-MM-DD
+
+  const str = String(d).trim();
+  const [m, day, y] = str.split("/");
   if (!m || !day || !y) return null;
 
   let year = y.trim();
-  // Handle 2-digit years (e.g. "26" -> "2026")
   if (year.length === 2) {
     const num = Number(year);
-    // Assuming 2000s for numbers 0-69, 1900s for 70-99
     year = num < 70 ? `20${year.padStart(2, "0")}` : `19${year.padStart(2, "0")}`;
   } else {
     year = year.padStart(4, "0");
@@ -39,7 +40,6 @@ function normalizeTypeAndQty(type = "", qty = 0) {
     return q < 0 ? { type: "sell_call", qty: Math.abs(q) } : { type: "buy_call", qty: Math.abs(q) };
   }
 
-  // already normalized or unknown
   return { type: String(type || "").trim(), qty: q };
 }
 
@@ -48,13 +48,13 @@ function parseNumber(v) {
   return Number(String(v).replace(/[$,]/g, "")) || 0;
 }
 
-export function buildImportData(rows = []) {
+export function buildImportData(rows = [], uid = auth.currentUser?.uid || "", startingCount = 0) {
   const uuidMap = new Map();
 
   // Build UUIDs only for non-stock legs that have an ID
-  rows.forEach(r => {
+  rows.forEach((r) => {
     const id = r?.ID ?? r?.Id ?? r?.id;
-    const type = r?.Type ?? "";
+    const type = r?.Type ?? r?.type ?? "";
     if (!id) return;
     if (String(type).toLowerCase() === "stock") return;
     uuidMap.set(String(id), uuidv4());
@@ -62,29 +62,32 @@ export function buildImportData(rows = []) {
 
   const legsById = new Map();
 
-  rows.forEach(r => {
+  rows.forEach((r) => {
     const rawId = r?.ID ?? r?.Id ?? r?.id;
     if (!rawId) return;
     const idKey = String(rawId);
 
-    const typeRaw = r?.Type ?? "";
+    const typeRaw = r?.Type ?? r?.type ?? "";
     if (String(typeRaw).toLowerCase() === "stock") return;
 
     const newId = uuidMap.get(idKey);
     if (!newId) return;
 
-    const rolledFromRaw = r?.RolledFrom ?? r?.RolledFromId ?? r?.RolledFromID;
-    const rolledToRaw = r?.RolledTo ?? r?.RolledToId ?? r?.RolledToID;
+    // Flexible lookups for headers with spaces or different casings
+    const rolledFromRaw = r?.RolledFrom ?? r?.RolledFromId ?? r?.RolledFromID ?? r?.["Rolled From"];
+    const rolledToRaw = r?.RolledTo ?? r?.RolledToId ?? r?.RolledToID ?? r?.["Rolled To"];
+    const openDateRaw = r?.OpenDate ?? r?.["Open Date"];
+    const closeDateRaw = r?.CloseDate ?? r?.["Close Date"];
+    const expirationRaw = r?.Expiration ?? r?.["Expiration Date"] ?? r?.Expiry;
 
     const newRolledFrom = rolledFromRaw ? uuidMap.get(String(rolledFromRaw)) || "" : "";
     const newRolledTo = rolledToRaw ? uuidMap.get(String(rolledToRaw)) || "" : "";
 
-    const { type, qty } = normalizeTypeAndQty(typeRaw, Number(r?.Quantity));
+    const { type, qty } = normalizeTypeAndQty(typeRaw, Number(r?.Quantity ?? r?.["Quantity"]));
 
     legsById.set(newId, {
-      // keep original CSV fields for debugging
       ID: idKey,
-      Ticker: r?.Ticker ?? "",
+      Ticker: r?.Ticker ?? r?.ticker ?? "",
       RolledFrom: rolledFromRaw ?? "",
       RolledTo: rolledToRaw ?? "",
       UUID: newId,
@@ -92,24 +95,25 @@ export function buildImportData(rows = []) {
       RolledToUUID: newRolledTo,
       NormalizedType: type,
       NormalizedQty: qty,
-      NormalizedOpenDate: normalizeDate(r?.OpenDate),
-      NormalizedCloseDate: normalizeDate(r?.CloseDate),
-      NormalizedExpiry: normalizeDate(r?.Expiration),
-      StrikeRaw: r?.Strike ?? "",
-      OpenPriceRaw: r?.OpenPrice ?? "",
-      ClosePriceRaw: r?.ClosePrice ?? "",
-      CurrentThetaRaw: r?.CurrentTheta ?? ""
+      NormalizedOpenDate: normalizeDate(openDateRaw),
+      NormalizedCloseDate: normalizeDate(closeDateRaw),
+      NormalizedExpiry: normalizeDate(expirationRaw),
+      StrikeRaw: r?.Strike ?? r?.strike ?? "",
+      OpenPriceRaw: r?.OpenPrice ?? r?.["Open Price"] ?? "",
+      ClosePriceRaw: r?.ClosePrice ?? r?.["Close Price"] ?? "",
+      CurrentThetaRaw: r?.CurrentTheta ?? r?.["Current Theta"] ?? "",
     });
   });
 
   const campaigns = [];
   const legs = [];
   const visited = new Set();
+  let campaignCounter = startingCount + 1;
 
   for (const [uuid, row] of legsById.entries()) {
     if (visited.has(uuid)) continue;
 
-    // start of chain if no valid RolledFrom or RolledFrom not present
+    // Start of chain
     if (!row.RolledFromUUID || !legsById.has(row.RolledFromUUID)) {
       const chain = [];
       let current = row;
@@ -126,19 +130,20 @@ export function buildImportData(rows = []) {
       const first = chain[0];
       const last = chain[chain.length - 1];
 
-      const hasOpenLeg = chain.some(l => !l.NormalizedCloseDate);
+      const hasOpenLeg = chain.some((l) => !l.NormalizedCloseDate);
 
       const campaignId = uuidv4();
       const ticker = first.Ticker || "";
       const startDate = first.NormalizedOpenDate || null;
       const endDate = hasOpenLeg ? null : last.NormalizedCloseDate || null;
       const status = hasOpenLeg ? "open" : "closed";
-      const campaignName = `${ticker} ${first.NormalizedExpiry || ""}`.trim();
+      const campaignName = `${ticker} #${campaignCounter++}`;
 
       const now = Date.now();
 
       campaigns.push({
         id: campaignId,
+        uid, // Included for sync consistency
         ticker,
         name: campaignName,
         startDate,
@@ -148,10 +153,10 @@ export function buildImportData(rows = []) {
         updatedAt: now,
         clientUpdatedAt: now,
         dirty: true,
-        deleted: false
+        deleted: false,
       });
 
-      chain.forEach(l => {
+      chain.forEach((l) => {
         const strike = l.StrikeRaw ? parseNumber(l.StrikeRaw) : null;
         const openPrice = parseNumber(l.OpenPriceRaw);
         const closePrice = parseNumber(l.ClosePriceRaw);
@@ -159,12 +164,14 @@ export function buildImportData(rows = []) {
 
         legs.push({
           id: l.UUID,
+          uid, // Included for sync consistency
           campaignId,
           ticker: l.Ticker || "",
           type: l.NormalizedType,
           qty: l.NormalizedQty,
           strike,
-          expiry: l.NormalizedExpiry || null,
+          expiration: l.NormalizedExpiry || null, // Key updated to "expiration" for consistency
+          expiry: l.NormalizedExpiry || null,     // Kept as alias if needed
           openDate: l.NormalizedOpenDate || null,
           closeDate: l.NormalizedCloseDate || null,
           openPrice,
@@ -177,7 +184,7 @@ export function buildImportData(rows = []) {
           updatedAt: now,
           clientUpdatedAt: now,
           dirty: true,
-          deleted: false
+          deleted: false,
         });
       });
     }

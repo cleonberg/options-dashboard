@@ -5,7 +5,7 @@ import GoogleSignIn from "./GoogleSignIn.jsx";
 import { forceSync, initialSync, deleteAllRemote } from "../sync/sync";
 import { auth } from "../auth";
 import { buildImportData } from "../logic/importCsv.js";
-import { updateCampaign } from "../sync/sync";
+import { updateCampaign, cleanupDexieTimestamps } from "../sync/sync";
 import {
   computeLegPL,
   getLegCashFlowEvents,
@@ -375,38 +375,54 @@ async function handleUndelete(campaign) {
     const file = e.target.files[0];
     if (!file) return;
 
-    const text = await file.text();
-    const rows = parseCsv(text);
-    const { campaigns, legs } = buildImportData(rows);
-
-    if (!window.confirm("Importing CSV will overwrite existing local data. Continue?")) {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("You must be logged in to import CSV data.");
+      e.target.value = "";
       return;
     }
 
-    await dbLocal.campaigns.clear();
-    await dbLocal.legs.clear();
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
 
-    const now = Date.now();
+      // 1. Get existing campaign count so numbering continues seamlessly (e.g., #15, #16...)
+      const existingCount = await dbLocal.campaigns.count();
 
-    const campaignsToInsert = campaigns.map((c) => ({
-      ...c,
-      dirty: true,
-      deleted: false,
-      updatedAt: now,
-    }));
+      // 2. Build normalized data with uid and starting count offset
+      const { campaigns, legs } = buildImportData(rows, uid, existingCount);
 
-    const legsToInsert = legs.map((l) => ({
-      ...l,
-      dirty: true,
-      deleted: false,
-      updatedAt: now,
-    }));
+      if (campaigns.length === 0 && legs.length === 0) {
+        alert("No valid trade legs or campaigns found in the CSV.");
+        e.target.value = "";
+        return;
+      }
 
-    await dbLocal.campaigns.bulkPut(campaignsToInsert);
-    await dbLocal.legs.bulkPut(legsToInsert);
+      if (
+        !window.confirm(
+          `Importing CSV will add ${campaigns.length} campaigns and ${legs.length} legs to your database. Continue?`
+        )
+      ) {
+        e.target.value = "";
+        return;
+      }
 
-    alert("CSV import complete. Syncing to Firestore...");
-    if (typeof reloadAll === "function") reloadAll();
+      // 3. Save new records to Dexie (buildImportData handles timestamps, dirty flags, and uid)
+      await dbLocal.campaigns.bulkPut(campaigns);
+      await dbLocal.legs.bulkPut(legs);
+
+      alert("CSV import complete. Syncing to Firestore...");
+
+      // 4. Trigger sync and reload UI
+      if (typeof forceSync === "function") forceSync(uid);
+      if (typeof reloadAll === "function") reloadAll();
+
+    } catch (err) {
+      console.error("Error importing CSV:", err);
+      alert("Failed to import CSV file. Check console for details.");
+    } finally {
+      e.target.value = ""; // Reset input so re-selecting the same file works
+    }
   }
 
   // ---------- Danger Zone Logic ----------
@@ -602,6 +618,35 @@ async function handleUndelete(campaign) {
     if (typeof reloadAll === "function") reloadAll();
   }
 
+
+
+
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+
+  const handleFixTimestamps = async () => {
+    setIsCleaning(true);
+    setStatusMessage("Repairing local database timestamps...");
+
+    try {
+      await cleanupDexieTimestamps();
+      
+      // Refresh local UI state if reloadAll function is passed as a prop
+      if (reloadAll) {
+        await reloadAll();
+      }
+
+      setStatusMessage("✅ Local timestamps successfully repaired!");
+    } catch (err) {
+      console.error("[Cleanup Failure]", err);
+      setStatusMessage("❌ Error repairing timestamps.");
+    } finally {
+      setIsCleaning(false);
+    }
+  }
+
+
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       
@@ -701,6 +746,27 @@ async function handleUndelete(campaign) {
         <div className="border-t border-red-200 pt-4">
           <DateMigrationAdmin uid={auth.currentUser?.uid} />
         </div>
+      </div>
+
+      <div className="card settings-section">
+        <h3>Database Maintenance</h3>
+        <p style={{ fontSize: "14px", color: "#a1a1aa" }}>
+          Fixes mixed timestamp formats in local storage caused by previous sync bugs.
+        </p>
+
+        <button 
+          onClick={handleFixTimestamps} 
+          disabled={isCleaning}
+          style={{ marginTop: "10px" }}
+        >
+          {isCleaning ? "Repairing..." : "Repair Local Timestamps"}
+        </button>
+
+        {statusMessage && (
+          <p style={{ marginTop: "8px", fontSize: "13px", color: statusMessage.includes("✅") ? "#4ade80" : "#f87171" }}>
+            {statusMessage}
+          </p>
+        )}
       </div>
 
       {/* 3. TRASH & RECOVERY */}
