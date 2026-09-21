@@ -4,6 +4,7 @@ import {
   query,
   onSnapshot,
   getDocs,
+  getDoc,
   doc,
   setDoc,
   serverTimestamp,
@@ -13,7 +14,13 @@ import {
 import { db } from "../firebase";
 import { dbLocal } from "../db/dexie";
 import { processDeletionQueue } from "./processDeletionQueue";
-import { toMillis } from "./utils/firestoreUtils";
+import { 
+  toMillis,
+  effectiveLocalTs,
+  effectiveRemoteTs,
+  normalizeRemoteDoc,
+  chooseWinningRecord,
+} from "./utils/firestoreUtils";
 
 /* -----------------------
    Helpers
@@ -28,6 +35,9 @@ function normalizeCampaign(raw) {
     ...raw,
     deleted: !!raw.deleted,
     dirty: !!raw.dirty,
+    updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+    clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
+    serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
   };
 }
 
@@ -36,7 +46,33 @@ function normalizeLeg(raw) {
     ...raw,
     deleted: !!raw.deleted,
     dirty: !!raw.dirty,
+    updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+    clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
+    serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
   };
+}
+
+async function guardAgainstStaleRemoteWrite(uid, collectionName, localRecord) {
+  if (!uid || !localRecord?.id) return false;
+
+  try {
+    const remoteSnap = await getDoc(doc(db, "users", uid, collectionName, localRecord.id));
+    if (!remoteSnap.exists()) return false;
+
+    const remote = normalizeRemoteDoc(remoteSnap.id, remoteSnap.data());
+    const localTs = effectiveLocalTs(localRecord);
+    const remoteTs = effectiveRemoteTs(remote);
+
+    if (localTs < remoteTs) {
+      const winner = chooseWinningRecord(localRecord, remote);
+      await dbLocal[collectionName].put({ ...winner, dirty: false });
+      return true;
+    }
+  } catch (err) {
+    console.warn("[sync] stale write check failed", err);
+  }
+
+  return false;
 }
 
 /* -----------------------
@@ -209,13 +245,11 @@ export async function createCampaign(uid, fields) {
   const now = Date.now();
   const id = fields.id || crypto.randomUUID();
 
-  // 1. Auto-generate campaign name using Dexie count
   const count = await dbLocal.campaigns.count();
   const autoName = (fields.name && fields.name.trim())
     ? fields.name
     : `${fields.ticker || "UNKNOWN"} #${count + 1}`;
 
-  // 2. Build full normalized campaign object
   const campaign = normalizeCampaign({
     id,
     uid,
@@ -224,53 +258,81 @@ export async function createCampaign(uid, fields) {
     name: autoName,
     openDate: fields.openDate ?? now,
     updatedAt: now,
+    clientUpdatedAt: now,
+    serverUpdatedAt: null,
     deleted: false,
-    dirty: true, // Marked dirty for offline sync tracking
+    dirty: true,
   });
 
-  try {
-    // 3. Write locally to Dexie (immediate UI update via useLiveQuery)
-    await dbLocal.campaigns.put(campaign);
+  await dbLocal.campaigns.put(campaign);
 
-    // 4. Push to Firestore
+  try {
+    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "campaigns", campaign);
+    if (remoteWon) return id;
+
     await setDoc(doc(db, "users", uid, "campaigns", id), {
       ...campaign,
       dirty: false,
       updatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
     });
 
-    // 5. Clear local dirty flag on successful remote write
-    await dbLocal.campaigns.update(id, { dirty: false });
+    await dbLocal.campaigns.update(id, {
+      dirty: false,
+      serverUpdatedAt: Date.now(),
+    });
   } catch (err) {
     console.warn("⚠️ Saved to local IndexedDB, but remote sync failed (offline or network error):", err);
-    // Left as dirty: true so forceSync() can push it later when back online
   }
 
   return id;
 }
 
 export async function updateCampaign(uid, id, fields) {
-  console.group(`[sync.js] ✏️ updateCampaign Triggered for ID: ${id}`);
-  console.log("Fields to update:", fields);
-
   const existing = await dbLocal.campaigns.get(id);
   if (!existing) {
-    console.warn(`⚠️ [updateCampaign] Local campaign record with ID ${id} not found.`);
-    console.groupEnd();
+    console.warn(`[updateCampaign] Local campaign not found: ${id}`);
     return;
   }
 
-  const now = nowMillis();
+  const now = Date.now();
+
   const updated = normalizeCampaign({
     ...existing,
     ...fields,
     updatedAt: now,
+    clientUpdatedAt: now,
     dirty: true,
   });
+
+  await dbLocal.campaigns.put(updated);
+
+  try {
+    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "campaigns", updated);
+    if (remoteWon) return;
+
+    await setDoc(doc(db, "users", uid, "campaigns", id), {
+      ...updated,
+      dirty: false,
+      updatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
+    });
+
+    await dbLocal.campaigns.update(id, {
+      dirty: false,
+      serverUpdatedAt: Date.now(),
+    });
+  } catch (err) {
+    console.error("[updateCampaign] push failed", err);
+  }
+}
 
   console.log("📦 Updated Record Payload:", updated);
 
   try {
+    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "campaigns", updated);
+    if (remoteWon) return;
+
     await dbLocal.campaigns.put(updated);
     console.log(`✅ [Dexie Local] Updated campaign record locally: ${id}`);
 
@@ -292,7 +354,6 @@ export async function updateCampaign(uid, id, fields) {
 export async function closeCampaign(uid, id) {
   await updateCampaign(uid, id, { 
     status: "closed", 
-    closed: true,
     endDate: new Date().toISOString().slice(0, 10)
   });
 }
@@ -300,7 +361,6 @@ export async function closeCampaign(uid, id) {
 export async function reopenCampaign(uid, id) {
   await updateCampaign(uid, id, { 
     status: "open", 
-    closed: false,
     deleted: false,
     deletedAt: null,
     endDate: ""
@@ -341,13 +401,13 @@ export async function addLeg(uid, legFields) {
     id,
     uid,
     isOpen: true,
-    closed: false,
     ...legFields,
     openDate: legFields?.openDate ?? now,
     closeDate: null,
     closePrice: null,
     updatedAt: now,
     clientUpdatedAt: now,
+    serverUpdatedAt: null,
     deleted: false,
     dirty: true,
   });
@@ -355,13 +415,20 @@ export async function addLeg(uid, legFields) {
   await dbLocal.legs.put(leg);
 
   try {
+    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "legs", leg);
+    if (remoteWon) return id;
+
     await setDoc(doc(db, "users", uid, "legs", id), {
       ...leg,
       dirty: false,
       updatedAt: serverTimestamp(),
       serverUpdatedAt: serverTimestamp(),
     });
-    await dbLocal.legs.update(id, { dirty: false });
+
+    await dbLocal.legs.update(id, {
+      dirty: false,
+      serverUpdatedAt: Date.now(),
+    });
   } catch (err) {
     console.error("[addLeg] push failed", err);
   }
@@ -372,22 +439,31 @@ export async function addLeg(uid, legFields) {
 
 export async function editLeg(uid, leg) {
   const now = nowMillis();
+
   const updated = normalizeLeg({
     ...leg,
     updatedAt: now,
+    clientUpdatedAt: now,
     dirty: true,
   });
 
   await dbLocal.legs.put(updated);
 
   try {
+    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "legs", updated);
+    if (remoteWon) return;
+
     await setDoc(doc(db, "users", uid, "legs", updated.id), {
       ...updated,
       dirty: false,
       updatedAt: serverTimestamp(),
       serverUpdatedAt: serverTimestamp(),
     });
-    await dbLocal.legs.update(updated.id, { dirty: false });
+
+    await dbLocal.legs.update(updated.id, {
+      dirty: false,
+      serverUpdatedAt: Date.now(),
+    });
   } catch (err) {
     console.error("[editLeg] push failed", err);
   }
@@ -397,68 +473,83 @@ export async function editLeg(uid, leg) {
 
 export async function closeLeg(uid, leg, closePrice) {
   const now = Date.now();
-  
-  // Construct a standard YYYY-MM-DD string using local time, preventing UTC shift
+
   const d = new Date();
   const localYear = d.getFullYear();
-  const localMonth = String(d.getMonth() + 1).padStart(2, '0');
-  const localDay = String(d.getDate()).padStart(2, '0');
-  const todayStr = `${localYear}-${localMonth}-${localDay}`; 
+  const localMonth = String(d.getMonth() + 1).padStart(2, "0");
+  const localDay = String(d.getDate()).padStart(2, "0");
+  const todayStr = `${localYear}-${localMonth}-${localDay}`;
 
-  let finalClosePrice = leg.closePrice; 
+  let finalClosePrice = leg.closePrice;
   if (closePrice !== undefined && closePrice !== null) {
     finalClosePrice = Number(closePrice);
   }
 
   const updated = normalizeLeg({
     ...leg,
-    closePrice: finalClosePrice, 
+    closePrice: finalClosePrice,
     closeDate: leg.closeDate || todayStr,
-    closed: true,  
-    isOpen: false, 
+    isOpen: false,
     updatedAt: now,
+    clientUpdatedAt: now,
     dirty: true,
   });
 
   await dbLocal.legs.put(updated);
 
   try {
+    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "legs", updated);
+    if (remoteWon) return updated;
+
     await setDoc(doc(db, "users", uid, "legs", leg.id), {
       ...updated,
       dirty: false,
       updatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
     });
-    await dbLocal.legs.update(leg.id, { dirty: false });
+
+    await dbLocal.legs.update(leg.id, {
+      dirty: false,
+      serverUpdatedAt: Date.now(),
+    });
   } catch (err) {
     console.error("[closeLeg] push failed", err);
   }
 
   await syncCampaignDates(uid, leg.campaignId);
-
   return updated;
 }
 
 export async function reopenLeg(uid, leg) {
   const now = Date.now();
+
   const updated = normalizeLeg({
     ...leg,
-    closePrice: null, 
+    closePrice: null,
     closeDate: null,
-    closed: false,  
-    isOpen: true, 
+    isOpen: true,
     updatedAt: now,
+    clientUpdatedAt: now,
     dirty: true,
   });
 
   await dbLocal.legs.put(updated);
 
   try {
+    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "legs", updated);
+    if (remoteWon) return updated;
+
     await setDoc(doc(db, "users", uid, "legs", leg.id), {
       ...updated,
       dirty: false,
       updatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
     });
-    await dbLocal.legs.update(leg.id, { dirty: false });
+
+    await dbLocal.legs.update(leg.id, {
+      dirty: false,
+      serverUpdatedAt: Date.now(),
+    });
   } catch (err) {
     console.error("[reopenLeg] push failed", err);
   }
@@ -516,18 +607,25 @@ export async function rollLeg(uid, sourceLeg, rollFields = {}) {
 ------------------------ */
 
 export async function forceSync(uid) {
-  const dirtyCampaigns = await dbLocal.campaigns.filter(c => c.dirty === true).toArray();
-  const dirtyLegs = await dbLocal.legs.filter(l => l.dirty === true).toArray();
+  if (!uid) return;
+
+  const dirtyCampaigns = await dbLocal.campaigns
+    .filter((c) => c.dirty === true)
+    .toArray();
+
+  const dirtyLegs = await dbLocal.legs
+    .filter((l) => l.dirty === true)
+    .toArray();
 
   for (const c of dirtyCampaigns) {
     const latest = await dbLocal.campaigns.get(c.id);
-    if (!latest) continue;
+    if (!latest || !latest.dirty) continue;
     await updateCampaign(uid, c.id, latest);
   }
 
   for (const l of dirtyLegs) {
     const latest = await dbLocal.legs.get(l.id);
-    if (!latest) continue;
+    if (!latest || !latest.dirty) continue;
     await editLeg(uid, latest);
   }
 }

@@ -1,16 +1,11 @@
-// src/sync/pullRemoteChanges.js
 import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { dbLocal } from "../db/dexie";
-import { normalizeRemoteDoc, toMillis } from "./utils/firestoreUtils";
+import { normalizeRemoteDoc, toMillis, effectiveLocalTs, effectiveRemoteTs } from "./utils/firestoreUtils";
 
-/**
- * Pull remote changes since `opts.since` (millis).
- * - Applies LWW rules (Last Write Wins) using Dexie batch operations for maximum speed.
- * - Returns { maxServerUpdatedAt } (millis) for runSync to persist.
- */
 export async function pullRemoteChanges(uid, opts = {}) {
   if (!uid) throw new Error("pullRemoteChanges requires uid");
+
   const since = Number(opts.since) || 0;
   let maxServerUpdatedAt = since;
 
@@ -18,95 +13,73 @@ export async function pullRemoteChanges(uid, opts = {}) {
     const ref = collection(db, "users", uid, collectionName);
     let snaps;
 
-    // 1. Single Network Request (Batched Pull)
     try {
       if (since > 0) {
-        const ts = Timestamp.fromMillis(since);
-        const q = query(ref, where("serverUpdatedAt", ">", ts));
+        const q = query(ref, where("serverUpdatedAt", ">", Timestamp.fromMillis(since)));
         snaps = await getDocs(q);
       } else {
         snaps = await getDocs(ref);
       }
     } catch (err) {
-      console.warn("[pullRemoteChanges] query by serverUpdatedAt failed, falling back to full fetch", err);
+      console.warn("[pullRemoteChanges] query failed, falling back to full fetch", err);
       snaps = await getDocs(ref);
     }
 
     if (snaps.empty) return;
 
-    // 2. Prepare incoming remote records in memory
-    const incomingRecords = [];
+    const recordsToPut = [];
 
     for (const docSnap of snaps.docs) {
-      const id = docSnap.id;
-      const remote = normalizeRemoteDoc(id, docSnap.data());
-      
-      // FIXED: Only advance maxServerUpdatedAt using actual server timestamps
-      const serverTs = remote.serverUpdatedAt ?? remote.updatedAt;
-      if (serverTs && serverTs > maxServerUpdatedAt) {
+      const remote = normalizeRemoteDoc(docSnap.id, docSnap.data());
+      const serverTs = effectiveRemoteTs(remote);
+
+      if (serverTs > maxServerUpdatedAt) {
         maxServerUpdatedAt = serverTs;
       }
 
-      incomingRecords.push({
-        id,
-        remote,
-        // Fallback to local time strictly for local comparison if server timestamp is absent
-        serverTs: serverTs ?? Date.now(), 
-      });
-    }
+      const local = await dbLocal[collectionName].get(docSnap.id);
 
-    // 3. Batch Read from Dexie
-    const incomingIds = incomingRecords.map(record => record.id);
-    const localRecords = await dbLocal[collectionName].bulkGet(incomingIds);
-
-    const recordsToPut = [];
-
-    // 4. Apply LWW Rules in memory
-    for (let i = 0; i < incomingRecords.length; i++) {
-      const { remote, serverTs } = incomingRecords[i];
-      const local = localRecords[i];
-
-      // FIXED: Guarantee clientUpdatedAt is stored as a millisecond number in Dexie
-      const preparedRemote = {
-        ...remote,
-        dirty: false,
-        updatedAt: serverTs,
-        clientUpdatedAt: toMillis(remote.clientUpdatedAt) ?? serverTs,
-      };
-
-      // If local missing -> write remote
       if (!local) {
-        recordsToPut.push(preparedRemote);
+        recordsToPut.push({
+          ...remote,
+          dirty: false,
+          updatedAt: serverTs,
+          clientUpdatedAt: toMillis(remote.clientUpdatedAt) ?? serverTs,
+        });
         continue;
       }
 
-      // FIXED: Use toMillis() on local Dexie timestamps before evaluating LWW rules
-      const localUpdatedAt = toMillis(local.updatedAt) ?? 0;
-      const localClientUpdatedAt = toMillis(local.clientUpdatedAt) ?? localUpdatedAt;
+      const localTs = effectiveLocalTs(local);
 
-      // If local not dirty -> accept remote if remote newer
       if (!local.dirty) {
-        if (localUpdatedAt < serverTs) {
-          recordsToPut.push(preparedRemote);
+        if (localTs < serverTs) {
+          recordsToPut.push({
+            ...remote,
+            dirty: false,
+            updatedAt: serverTs,
+            clientUpdatedAt: toMillis(remote.clientUpdatedAt) ?? serverTs,
+          });
         }
         continue;
       }
 
-      // Local is dirty -> compare clientUpdatedAt vs serverUpdatedAt
-      if (localClientUpdatedAt <= serverTs) {
-        // remote is same or newer: accept remote and clear dirty
-        recordsToPut.push(preparedRemote);
+      // If local dirtiness is newer than the remote write, preserve local.
+      // Otherwise accept the remote write.
+      if (localTs <= serverTs) {
+        recordsToPut.push({
+          ...remote,
+          dirty: false,
+          updatedAt: serverTs,
+          clientUpdatedAt: toMillis(remote.clientUpdatedAt) ?? serverTs,
+        });
       }
-      // If localClientUpdatedAt > serverTs, local wins: do nothing (skip)
     }
 
-    // 5. Batch Write to Dexie
-    if (recordsToPut.length > 0) {
+    if (recordsToPut.length) {
       await dbLocal[collectionName].bulkPut(recordsToPut);
     }
   }
 
-  // Pull campaigns then legs
   await pullCollection("campaigns");
   await pullCollection("legs");
 

@@ -9,7 +9,7 @@ import {
   signOut
 } from "firebase/auth";
 
-import { startSync, stopSync } from "./sync/runSync";
+import { stopSync } from "./sync/runSync";
 
 const auth = getAuth();
 const googleProvider = new GoogleAuthProvider();
@@ -18,18 +18,17 @@ export function startAuth(onReady) {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       console.log("Signed in as", user.uid, user.email);
-
-      // Start background sync for this user
-      startSync(user.uid);
-
-      // Fire the UI callback
       if (typeof onReady === "function") onReady(user);
-    } else {
-      // Stop any running sync when there's no authenticated user
-      stopSync();
+      return;
+    }
 
-      console.log("No user signed in, signing in anonymously…");
+    console.log("No user signed in, signing in anonymously…");
+    if (typeof onReady === "function") onReady(null);
+
+    try {
       await signInAnonymously(auth);
+    } catch (err) {
+      console.error("Anonymous sign-in failed:", err);
     }
   });
 }
@@ -56,7 +55,6 @@ export async function signInWithGoogleRedirect() {
 
 export async function signOutUser() {
   try {
-    // stop sync proactively on explicit sign-out
     stopSync();
     await signOut(auth);
     console.log("Signed out");

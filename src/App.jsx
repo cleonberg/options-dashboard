@@ -7,31 +7,32 @@ import DashboardTab from "./components/DashboardTab.jsx";
 import AllLegsTab from "./components/AllLegsTab.jsx";
 import CampaignsTab from "./components/CampaignsTab.jsx";
 import SettingsTab from "./components/SettingsTab.jsx";
+
 import { startAuth } from "./auth.js";
-
 import { computeDashboardSummary } from "./logic/logic.js";
-
-// Added createCampaign to imports
-import { ensureInitialSync, startBackgroundSync, forceSync, createCampaign } from "./sync/sync.js";
+import {
+  ensureInitialSync,
+  startBackgroundSync,
+  forceSync,
+  createCampaign,
+} from "./sync/sync.js";
 
 import { dbLocal } from "./db/dexie.js";
 import "./styles/styles.css";
 
 export default function App() {
-  // ---------- Auth State ----------
   const [uid, setUid] = useState(null);
 
-  // ---------- Reactive Database State ----------
   const campaigns = useLiveQuery(() => dbLocal.getAllCampaigns(), []) || [];
   const legs = useLiveQuery(() => dbLocal.getAllLegs(), []) || [];
 
-  const dirtyCount = useLiveQuery(async () => {
-    const c = await dbLocal.campaigns.filter(c => c.dirty === true).count();
-    const l = await dbLocal.legs.filter(l => l.dirty === true).count();
-    return c + l;
-  }, []) || 0;
+  const dirtyCount =
+    useLiveQuery(async () => {
+      const c = await dbLocal.campaigns.filter((c) => c.dirty === true).count();
+      const l = await dbLocal.legs.filter((l) => l.dirty === true).count();
+      return c + l;
+    }, []) || 0;
 
-  // ---------- UI State ----------
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
   const [editingLeg, setEditingLeg] = useState(null);
@@ -45,15 +46,15 @@ export default function App() {
 
   const [syncStatus, setSyncStatus] = useState("synced");
   const [lastSync, setLastSync] = useState(null);
-  
+
   const [dashboardSearchTerm, setDashboardSearchTerm] = useState("");
   const [dashboardStartDateFilter, setDashboardStartDateFilter] = useState("2026-01-01");
   const [dashboardEndDateFilter, setDashboardEndDateFilter] = useState("");
 
-  // ---------- Derived State ----------
-  const dashboardSummary = useMemo(() => {
-    return computeDashboardSummary(campaigns, legs);
-  }, [campaigns, legs]);
+  const dashboardSummary = useMemo(
+    () => computeDashboardSummary(campaigns, legs),
+    [campaigns, legs]
+  );
 
   useEffect(() => {
     if (campaigns.length > 0 && !selectedCampaignId) {
@@ -61,56 +62,78 @@ export default function App() {
     }
   }, [campaigns, selectedCampaignId]);
 
-  // ---------- Initialization & Auth ----------
   useEffect(() => {
-    startAuth((user) => {
-      setUid(user.uid);
+    const unsubscribe = startAuth((user) => {
+      setUid(user?.uid ?? null);
     });
+
+    return () => unsubscribe?.();
   }, []);
 
-  // ---------- Background Sync Engine ----------
   useEffect(() => {
-    if (!uid) return;
-
-    let unsubscribeSync = () => {};
-
-    (async () => {
-      setSyncStatus("syncing");
-      await ensureInitialSync(uid);
-      await forceSync(uid);
-      unsubscribeSync = startBackgroundSync(uid);
-      
+    if (!uid) {
       setSyncStatus("synced");
-      setLastSync(new Date());
-    })();
+      return;
+    }
 
-    return () => unsubscribeSync();
+    let isCancelled = false;
+    let stopBackgroundSync = () => {};
+
+    const initSync = async () => {
+      try {
+        setSyncStatus("syncing");
+        await ensureInitialSync(uid);
+        await forceSync(uid);
+
+        if (isCancelled) return;
+
+        stopBackgroundSync = startBackgroundSync(uid);
+        setSyncStatus("synced");
+        setLastSync(new Date());
+      } catch (err) {
+        console.error("Startup sync failed:", err);
+        if (!isCancelled) {
+          setSyncStatus("error");
+        }
+      }
+    };
+
+    initSync();
+
+    return () => {
+      isCancelled = true;
+      stopBackgroundSync();
+    };
   }, [uid]);
 
-  // ---------- Manual Sync ----------
   async function syncNow() {
     if (!uid) return;
-    setSyncStatus("syncing");
-    await forceSync(uid); 
-    setSyncStatus("synced");
-    setLastSync(new Date());
+
+    try {
+      setSyncStatus("syncing");
+      await forceSync(uid);
+      setSyncStatus("synced");
+      setLastSync(new Date());
+    } catch (err) {
+      console.error("Manual sync failed:", err);
+      setSyncStatus("error");
+    }
   }
 
   const handleSelectCampaign = (id) => {
     setSelectedCampaignId(id);
     setActiveTab("campaigns");
-  };  
+  };
 
-  // ---------- Campaign Handlers ----------
   const handleAddCampaign = async (campaignData) => {
     if (!uid) {
       console.error("Cannot add campaign: User is not authenticated.");
       return;
     }
+
     await createCampaign(uid, campaignData);
   };
 
-  // ---------- Render Tabs ----------
   function renderTab() {
     switch (activeTab) {
       case "dashboard":
@@ -132,13 +155,7 @@ export default function App() {
         );
 
       case "trades":
-        return (
-          <AllLegsTab
-            campaigns={campaigns}
-            legs={legs} 
-            uid={uid} 
-          />
-        );
+        return <AllLegsTab campaigns={campaigns} legs={legs} uid={uid} />;
 
       case "campaigns":
         return (
@@ -173,8 +190,6 @@ export default function App() {
     }
   }
 
-  window.dbLocal = dbLocal;
-
   return (
     <div className="app-container">
       <Header
@@ -184,14 +199,9 @@ export default function App() {
         syncNow={syncNow}
       />
 
-      <TabBar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <main>
-        {renderTab()}
-      </main>
+      <main>{renderTab()}</main>
     </div>
   );
 }
