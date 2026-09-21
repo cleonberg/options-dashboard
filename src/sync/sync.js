@@ -327,30 +327,6 @@ export async function updateCampaign(uid, id, fields) {
   }
 }
 
-  console.log("📦 Updated Record Payload:", updated);
-
-  try {
-    const remoteWon = await guardAgainstStaleRemoteWrite(uid, "campaigns", updated);
-    if (remoteWon) return;
-
-    await dbLocal.campaigns.put(updated);
-    console.log(`✅ [Dexie Local] Updated campaign record locally: ${id}`);
-
-    await setDoc(doc(db, "users", uid, "campaigns", id), {
-      ...updated,
-      dirty: false,
-      updatedAt: serverTimestamp(),
-    });
-
-    await dbLocal.campaigns.update(id, { dirty: false });
-    console.log(`🔥 [Firestore Remote] Successfully synced update to Firestore.`);
-  } catch (err) {
-    console.error("❌ [Firestore Error] Failed to update remote campaign:", err);
-  } finally {
-    console.groupEnd();
-  }
-}
-
 export async function closeCampaign(uid, id) {
   await updateCampaign(uid, id, { 
     status: "closed", 

@@ -148,6 +148,7 @@ export default function CashFlowChart({
             />
 
             <Tooltip
+              cursor={false}
               content={({ active, payload }) => {
                 if (!active || !payload || !payload.length) return null;
 
