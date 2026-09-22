@@ -20,6 +20,13 @@ if (!globalThis.__dbLocal) {
     console.log("[TRACE] Dexie READY triggered");
   });
 
+  // The browser can close the connection when the PWA is backgrounded for a
+  // while; reopen it so subsequent queries (e.g. useLiveQuery) don't throw.
+  db.on('close', () => {
+    console.warn("[TRACE] Dexie connection closed, reopening…");
+    db.open().catch((err) => console.error("[dexie] reopen failed", err));
+  });
+
   globalThis.__dbLocal = db;
 }
 

@@ -151,60 +151,72 @@ export async function pullAllFromFirestore(uid) {
 export function subscribeToCampaigns(uid) {
   const qCampaigns = query(collection(db, "users", uid, "campaigns"));
 
-  return onSnapshot(qCampaigns, async (snap) => {
-    // Process only what changed, avoiding full collection rewrites
-    for (const change of snap.docChanges()) {
-      const id = change.doc.id;
-      const localRecord = await dbLocal.campaigns.get(id);
+  return onSnapshot(
+    qCampaigns,
+    async (snap) => {
+      // Process only what changed, avoiding full collection rewrites
+      for (const change of snap.docChanges()) {
+        const id = change.doc.id;
+        const localRecord = await dbLocal.campaigns.get(id);
 
-      // The Golden Rule: Never overwrite a local dirty record
-      if (localRecord && localRecord.dirty) continue;
+        // The Golden Rule: Never overwrite a local dirty record
+        if (localRecord && localRecord.dirty) continue;
 
-      if (change.type === "added" || change.type === "modified") {
-        const raw = change.doc.data();
-        const data = normalizeCampaign({
-          ...raw,
-          id,
-          dirty: false,
-          updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
-          serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
-          clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
-        });
-        await dbLocal.campaigns.put(data);
-      } else if (change.type === "removed") {
-        await dbLocal.campaigns.delete(id);
+        if (change.type === "added" || change.type === "modified") {
+          const raw = change.doc.data();
+          const data = normalizeCampaign({
+            ...raw,
+            id,
+            dirty: false,
+            updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+            serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
+            clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
+          });
+          await dbLocal.campaigns.put(data);
+        } else if (change.type === "removed") {
+          await dbLocal.campaigns.delete(id);
+        }
       }
+    },
+    (err) => {
+      console.error("[subscribeToCampaigns] listener error", err);
     }
-  });
+  );
 }
 
 export function subscribeToLegs(uid) {
   const qLegs = query(collection(db, "users", uid, "legs"));
 
-  return onSnapshot(qLegs, async (snap) => {
-    for (const change of snap.docChanges()) {
-      const id = change.doc.id;
-      const localRecord = await dbLocal.legs.get(id);
+  return onSnapshot(
+    qLegs,
+    async (snap) => {
+      for (const change of snap.docChanges()) {
+        const id = change.doc.id;
+        const localRecord = await dbLocal.legs.get(id);
 
-      // The Golden Rule: Never overwrite a local dirty record
-      if (localRecord && localRecord.dirty) continue;
+        // The Golden Rule: Never overwrite a local dirty record
+        if (localRecord && localRecord.dirty) continue;
 
-      if (change.type === "added" || change.type === "modified") {
-        const raw = change.doc.data();
-        const data = normalizeLeg({
-          ...raw,
-          id,
-          dirty: false,
-          updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
-          serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
-          clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
-        });
-        await dbLocal.legs.put(data);
-      } else if (change.type === "removed") {
-        await dbLocal.legs.delete(id);
+        if (change.type === "added" || change.type === "modified") {
+          const raw = change.doc.data();
+          const data = normalizeLeg({
+            ...raw,
+            id,
+            dirty: false,
+            updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+            serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
+            clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
+          });
+          await dbLocal.legs.put(data);
+        } else if (change.type === "removed") {
+          await dbLocal.legs.delete(id);
+        }
       }
+    },
+    (err) => {
+      console.error("[subscribeToLegs] listener error", err);
     }
-  });
+  );
 }
 
 export async function ensureInitialSync(uid) {
@@ -347,14 +359,30 @@ export async function deleteCampaign(uid, id) {
   const existing = await dbLocal.campaigns.get(id);
   if (!existing) return;
 
+  const now = nowMillis();
+
   const tombstone = {
     ...existing,
     deleted: true,
     dirty: true,
-    updatedAt: nowMillis(),
+    updatedAt: now,
   };
 
-  await dbLocal.campaigns.put(tombstone);
+  // Also tombstone child legs immediately so live queries (e.g. dashboard
+  // totals) reflect the deletion right away, instead of waiting for the
+  // deletion queue to reach the server (which requires connectivity).
+  const legs = await dbLocal.legs.where("campaignId").equals(id).toArray();
+  const legTombstones = legs.map((leg) => ({
+    ...leg,
+    deleted: true,
+    dirty: true,
+    updatedAt: now,
+  }));
+
+  await dbLocal.transaction("rw", dbLocal.campaigns, dbLocal.legs, async () => {
+    await dbLocal.campaigns.put(tombstone);
+    if (legTombstones.length) await dbLocal.legs.bulkPut(legTombstones);
+  });
 
   await dbLocal.deletionJobs.add({
     uid,
