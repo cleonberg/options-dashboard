@@ -3,6 +3,26 @@
   box-sizing: border-box;
 }
 
+/* Recharts renders its SVG surface with tabindex="0", which shows a focus
+   outline box on desktop click. It also allows text selection / the
+   long-press callout menu on mobile, which is what triggers the tooltip
+   to look "selected" during a touch interaction. Suppress both. */
+.recharts-wrapper,
+.recharts-surface {
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible {
+  outline: none;
+}
+
 :root {
   /* Surfaces & Elevation */
   --bg-main: #080e1e;          /* Base canvas */

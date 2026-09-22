@@ -502,7 +502,7 @@ export function computeDailyCashFlowSeries(legs = [], campaigns = []) {
 
     // Format each item as "Label: +$150.00"
     const formattedLabels = dailyMap[date].items
-      .map((item) => `${item.label}: ${fmt(item.amount)}`)
+      .map((item) => `${item.label}: ${fmtWholeDollars(item.amount)}`)
       .join(", ");
 
     return {
