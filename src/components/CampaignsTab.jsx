@@ -3,6 +3,7 @@ import React, { useState } from "react";
 
 import {
   fmt,
+  fmtWholeDollars,
   cashClass, 
   computeCampaignSummary,
 } from "../logic/logic.js";
@@ -172,7 +173,7 @@ export default function CampaignsTab(props) {
         <div className="summary-card">
           <div className="summary-card-title">Total P/L</div>
           <div className={`${cashClass(summary.totalPL)} summary-card-value`} style={{ fontSize: "24px" }}>
-            {fmt(summary.totalPL)}
+            {fmtWholeDollars(summary.totalPL)}
           </div>
         </div>
 
@@ -180,7 +181,7 @@ export default function CampaignsTab(props) {
         <div className="summary-card">
           <div className="summary-card-title">Net Credit</div>
           <div className={`${cashClass(summary.netCredit)} summary-card-value`}>
-            {fmt(summary.netCredit)}
+            {fmtWholeDollars(summary.netCredit)}
           </div>
         </div>
 

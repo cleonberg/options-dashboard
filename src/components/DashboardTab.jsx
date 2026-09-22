@@ -3,6 +3,7 @@ import React, { useState, useMemo } from "react";
 import FilterBar from "./FilterBar.jsx";
 import {
   fmt,
+  fmtWholeDollars,
   cashClass,
   computeLegPL,
   computeDailyCashFlowSeries
@@ -349,7 +350,7 @@ export default function DashboardTab({
                     displaySummary.netPL
                   )}`}
                 >
-                  {fmt(displaySummary.netPL)}
+                  {fmtWholeDollars(displaySummary.netPL)}
                 </div>
 
                 {/* <div
@@ -381,7 +382,7 @@ export default function DashboardTab({
                     displaySummary.netCashFlow
                   )}`}
                 >
-                  {fmt(displaySummary.netCashFlow)}
+                  {fmtWholeDollars(displaySummary.netCashFlow)}
                 </div>
 
                 {/* <div
@@ -408,7 +409,7 @@ export default function DashboardTab({
                 filteredCashFlowWeekly.weekly
               )}`}
             >
-              {fmt(filteredCashFlowWeekly.weekly)}
+              {fmtWholeDollars(filteredCashFlowWeekly.weekly)}
             </div>
           </div>
 
@@ -432,7 +433,7 @@ export default function DashboardTab({
                 currentWeekPremium
               )}`}
             >
-              {fmt(currentWeekPremium)}
+              {fmtWholeDollars(currentWeekPremium)}
             </div>
           </div>
 

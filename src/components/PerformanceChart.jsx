@@ -1,6 +1,6 @@
 // src/components/PerformanceChart.jsx
 import React, { useMemo } from "react";
-import { fmt, computeCampaignSummary } from "../logic/logic.js";
+import { fmt, fmtWholeDollars, computeCampaignSummary } from "../logic/logic.js";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -316,7 +316,7 @@ export default function PerformanceChart({
                         color: "#3182ce",
                       }}
                     >
-                      Cumulative P/L: {fmt(data.cumulativePL)}
+                      Cumulative P/L: {fmtWholeDollars(data.cumulativePL)}
                     </div>
 
                     {data.campaigns && data.campaigns.length > 0 && (
@@ -355,7 +355,7 @@ export default function PerformanceChart({
                                 fontWeight: "bold",
                               }}
                             >
-                              {fmt(item.pl)}
+                              {fmtWholeDollars(item.pl)}
                             </span>
                           </div>
                         ))}
@@ -369,7 +369,7 @@ export default function PerformanceChart({
                             fontWeight: "bold",
                           }}
                         >
-                          Daily Net P/L: {fmt(data.pl)}
+                          Daily Net P/L: {fmtWholeDollars(data.pl)}
                         </div>
                       </div>
                     )}

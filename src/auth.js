@@ -9,8 +9,6 @@ import {
   signOut
 } from "firebase/auth";
 
-import { stopSync } from "./sync/runSync";
-
 const auth = getAuth();
 const googleProvider = new GoogleAuthProvider();
 
@@ -55,7 +53,6 @@ export async function signInWithGoogleRedirect() {
 
 export async function signOutUser() {
   try {
-    stopSync();
     await signOut(auth);
     console.log("Signed out");
   } catch (err) {

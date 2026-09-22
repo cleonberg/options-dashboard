@@ -20,53 +20,10 @@ if (!globalThis.__dbLocal) {
     console.log("[TRACE] Dexie READY triggered");
   });
 
-  // The browser can close the connection when the PWA is backgrounded for a
-  // while; reopen it so subsequent queries (e.g. useLiveQuery) don't throw.
-  db.on('close', () => {
-    console.warn("[TRACE] Dexie connection closed, reopening…");
-    db.open().catch((err) => console.error("[dexie] reopen failed", err));
-  });
-
   globalThis.__dbLocal = db;
 }
 
 const dbLocal = globalThis.__dbLocal;
-
-// // Helper: generate IDs
-// function newId() {
-//   return crypto.randomUUID();
-// }
-
-// // Dirty helper — standardized to numeric timestamp (Date.now())
-// export async function markDirty(table, id, changes) {
-//   await dbLocal[table].update(id, {
-//     ...changes,
-//     dirty: true,
-//     updatedAt: Date.now()
-//   });
-// }
-
-// // Deletion queue helpers
-// export async function queueDeletionJob(type, targetId) {
-//   await dbLocal.deletionJobs.add({
-//     type,
-//     targetId,
-//     createdAt: Date.now(),
-//     attempts: 0
-//   });
-// }
-
-// export async function getDeletionJobs() {
-//   return dbLocal.deletionJobs.toArray();
-// }
-
-// // Hard delete helper
-// export async function hardDeleteLocalCampaignAndLegs(campaignId) {
-//   await dbLocal.transaction('rw', dbLocal.campaigns, dbLocal.legs, async () => {
-//     await dbLocal.legs.where('campaignId').equals(campaignId).delete();
-//     await dbLocal.campaigns.where('id').equals(campaignId).delete();
-//   });
-// }
 
 // Campaigns
 dbLocal.getAllCampaigns = async function () {
@@ -74,39 +31,11 @@ dbLocal.getAllCampaigns = async function () {
   return all.filter(c => !c.deleted);
 };
 
-// dbLocal.updateCampaign = async function (id, changes) {
-//   await dbLocal.campaigns.update(id, {
-//     ...changes,
-//     updatedAt: Date.now(),
-//     dirty: true
-//   });
-// };
-
 // Legs
 dbLocal.getAllLegs = async function () {
   const all = await dbLocal.legs.toArray();
   return all.filter(l => !l.deleted);
 };
-
-// dbLocal.addLeg = async function (leg) {
-//   const id = newId();
-//   await dbLocal.legs.put({
-//     id,
-//     updatedAt: Date.now(),
-//     dirty: true,
-//     deleted: false,
-//     ...leg
-//   });
-//   return id;
-// };
-
-// dbLocal.updateLeg = async function (id, changes) {
-//   await dbLocal.legs.update(id, {
-//     ...changes,
-//     updatedAt: Date.now(),
-//     dirty: true
-//   });
-// };
 
 export default dbLocal;
 export { dbLocal };

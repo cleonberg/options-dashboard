@@ -1,6 +1,6 @@
 // src/components/CashFlowChart.jsx
 import React, { useMemo } from "react";
-import { fmt, computeDailyCashFlowSeries } from "../logic/logic.js";
+import { fmtWholeDollars, computeDailyCashFlowSeries } from "../logic/logic.js";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -90,6 +90,37 @@ export default function CashFlowChart({
       });
     });
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const todayStr = today.toISOString().slice(0, 10);
+    const targetDateStr =
+      endDateFilter && endDateFilter < todayStr
+        ? endDateFilter
+        : todayStr;
+    const targetDate = new Date(`${targetDateStr}T00:00:00`);
+    const lastDataDate = new Date(
+      `${filteredSeries[filteredSeries.length - 1].date}T00:00:00`
+    );
+    const endingValue =
+      filteredSeries[filteredSeries.length - 1].cumulativeCashFlow;
+
+    lastDataDate.setDate(lastDataDate.getDate() + 1);
+
+    while (lastDataDate <= targetDate) {
+      const date = lastDataDate.toISOString().slice(0, 10);
+
+      timeline.push({
+        timestamp: lastDataDate.getTime(),
+        dateStr: date,
+        netCashFlow: 0,
+        cumulativeCashFlow: endingValue,
+        labels: "",
+      });
+
+      lastDataDate.setDate(lastDataDate.getDate() + 1);
+    }
+
     return timeline;
   }, [legs, campaigns, campaign, mode, startDateFilter, endDateFilter]);
 
@@ -178,7 +209,7 @@ export default function CashFlowChart({
 
                     {/* Cumulative Cash Flow */}
                     <div style={{ fontSize: "12px", marginBottom: "3px", color: "#10b981" }}>
-                      Cumulative Net: {fmt(data.cumulativeCashFlow)}
+                      Cumulative Net: {fmtWholeDollars(data.cumulativeCashFlow)}
                     </div>
 
                     {/* Daily Net Cash Flow */}
@@ -189,7 +220,7 @@ export default function CashFlowChart({
                         color: data.netCashFlow >= 0 ? "#10b981" : "#f87171",
                       }}
                     >
-                      Daily Net: {fmt(data.netCashFlow)}
+                      Daily Net: {fmtWholeDollars(data.netCashFlow)}
                     </div>
 
                     {/* Small Ticker / Campaign Contributor Labels */}

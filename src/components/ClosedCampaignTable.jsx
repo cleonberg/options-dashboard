@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { 
-  fmt, 
+  fmtWholeDollars,
   cashClass, 
   computeCampaignSummary, 
   detectStrategy,
@@ -114,7 +114,7 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
 
                 <td>{c.endDate || "-"}</td>
                 <td className={cashClass(summary.totalPL)}>
-                  {fmt(summary.totalPL)}
+                  {fmtWholeDollars(summary.totalPL)}
                 </td>
               </tr>
             );

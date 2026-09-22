@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import {
   fmt,
+  fmtWholeDollars,
   cashClass,
   computeCampaignSummary,
   fmtCampaignDaysLeft,
@@ -126,7 +127,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
                     <DaysLeftProgressBar daysLeft={daysLeft} />
                   </td>
                   <td className={cashClass(summary.netCredit)}>
-                    {fmt(summary.netCredit)}
+                    {fmtWholeDollars(summary.netCredit)}
                   </td>
                 </tr>
               );

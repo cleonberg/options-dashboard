@@ -19,6 +19,18 @@ export function fmt(x) {
   });
 }
 
+export function fmtWholeDollars(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return "-";
+
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  });
+}
+
 export function cashClass(x) {
   if (x == null) return "";
   if (x > 0) return "cash-pos";
