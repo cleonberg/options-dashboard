@@ -610,6 +610,51 @@ export async function rollLeg(uid, sourceLeg, rollFields = {}) {
    Force sync & Utilities
 ------------------------ */
 
+async function flushDirtyBatch(uid, collectionName, rows) {
+  if (!rows.length) return;
+
+  for (let i = 0; i < rows.length; i += 400) {
+    const batch = writeBatch(db);
+    const chunk = rows.slice(i, i + 400);
+
+    let mutationCount = 0;
+
+    for (const row of chunk) {
+      const remoteWon = await guardAgainstStaleRemoteWrite(uid, collectionName, row);
+      if (remoteWon) continue;
+
+      const ref = doc(db, "users", uid, collectionName, row.id);
+
+      batch.set(
+        ref,
+        {
+          ...row,
+          dirty: false,
+          updatedAt: serverTimestamp(),
+          serverUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      mutationCount++;
+    }
+
+    if (mutationCount > 0) {
+      await batch.commit();
+    }
+
+    for (const row of chunk) {
+      const latest = await dbLocal[collectionName].get(row.id);
+      if (latest && latest.dirty) {
+        await dbLocal[collectionName].update(row.id, {
+          dirty: false,
+          serverUpdatedAt: Date.now(),
+        });
+      }
+    }
+  }
+}
+
 export async function forceSync(uid) {
   if (!uid) return;
 
@@ -621,17 +666,8 @@ export async function forceSync(uid) {
     .filter((l) => l.dirty === true)
     .toArray();
 
-  for (const c of dirtyCampaigns) {
-    const latest = await dbLocal.campaigns.get(c.id);
-    if (!latest || !latest.dirty) continue;
-    await updateCampaign(uid, c.id, latest);
-  }
-
-  for (const l of dirtyLegs) {
-    const latest = await dbLocal.legs.get(l.id);
-    if (!latest || !latest.dirty) continue;
-    await editLeg(uid, latest);
-  }
+  await flushDirtyBatch(uid, "campaigns", dirtyCampaigns);
+  await flushDirtyBatch(uid, "legs", dirtyLegs);
 }
 
 export async function deleteAllRemote(uid) {
