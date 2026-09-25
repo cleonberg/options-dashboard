@@ -143,15 +143,7 @@ export default function CashFlowChart({
   }
 
   return (
-    <div
-      style={{
-        background: "#111f3f",
-        padding: "16px",
-        borderRadius: "8px",
-        border: "1px solid #24345f",
-        marginBottom: "24px",
-      }}
-    >
+    <div className="card">
       <h3 style={{ color: "#9fb3ff", marginTop: 0, marginBottom: "16px" }}>
         Cumulative Net Premium & Cash Flow
       </h3>

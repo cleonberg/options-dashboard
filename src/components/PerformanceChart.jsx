@@ -245,15 +245,7 @@ export default function PerformanceChart({
   const isSingleMode = mode === "single" || Boolean(campaign);
 
   return (
-    <div
-      style={{
-        background: "#111f3f",
-        padding: "16px",
-        borderRadius: "8px",
-        border: "1px solid #24345f",
-        marginBottom: "24px",
-      }}
-    >
+    <div className="card">
       <h3 style={{ color: "#9fb3ff", marginTop: 0, marginBottom: "16px" }}>
         {isSingleMode
           ? "Campaign Realized P/L Trajectory"

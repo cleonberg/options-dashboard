@@ -49,6 +49,7 @@
   /* Borders & Dividers */
   --border-color: #1e293b;      /* Main card & table dividers */
   --border-btn: #334155;        /* Secondary button border */
+  --border-color-bright: #10b981;
 
   /* Financial Indicators */
   --color-positive: #22c55e;    /* Positive cash/P&L */
@@ -167,9 +168,25 @@ h2, h3 {
 .chart-container {
   background: var(--bg-card);
   border-radius: 8px;
-  border: 1px solid var(--border-color);
   padding: 8px;
   margin-bottom: 12px;
+}
+
+.summary-grid-cards > .summary-card {
+  border: 1px solid var(--border-color-bright);
+}
+
+.cash-flow-charts-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .cash-flow-charts-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Universal Input & Dropdown Styling */

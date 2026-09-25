@@ -11,7 +11,8 @@ import {
 import CampaignForm from "./CampaignForm.jsx";
 import LegForm from "./LegForm.jsx";
 import LegTable from "./LegTable.jsx";
-import PerformanceChart from "./PerformanceChart.jsx";
+import CashFlowChart from "./CashFlowChart.jsx";
+import WeeklyCashFlowChart from "./WeeklyCashFlowChart.jsx";
 
 import { 
   closeCampaign,
@@ -76,6 +77,15 @@ export default function CampaignsTab(props) {
       setSaveSuccess(false);
     }, 3000);
   };
+
+  function getLocalDateKey() {
+    const today = new Date();
+    return [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
 
   // -----------------------------
   // Render
@@ -203,11 +213,29 @@ export default function CampaignsTab(props) {
       </div>
 
       {/* --- PERFORMANCE CHART (UPDATED PROPS) --- */}
-      <PerformanceChart 
+      {/* <PerformanceChart 
         campaign={selectedCampaign} 
         legs={legsForCampaign} 
         mode="single" 
-      />
+      /> */}
+      <div className="cash-flow-charts-grid">
+        <WeeklyCashFlowChart
+          campaign={selectedCampaign}
+          campaigns={campaigns}
+          legs={legsForCampaign}
+          mode="single"
+          startDateFilter={selectedCampaign.startDate || ""}
+          endDateFilter={selectedCampaign.endDate || getLocalDateKey()}
+        />
+      
+        <CashFlowChart
+          campaign={selectedCampaign}
+          campaigns={campaigns}
+          legs={legsForCampaign}
+          startDateFilter={selectedCampaign.startDate || ""}
+          endDateFilter={selectedCampaign.endDate || getLocalDateKey()}
+        />
+      </div>
 
       {/* --- LEGS SECTION --- */}
       <div className="card">

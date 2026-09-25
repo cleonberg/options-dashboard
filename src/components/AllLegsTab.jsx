@@ -156,26 +156,37 @@ export default function AllLegsTab({
       {/* Summary Card */}
       <div className="summary-grid-cards">
         <div className="summary-card">
-          <div className="summary-card-title">Total Legs</div>
-          <div className="summary-card-value">{legs.length}</div>
+          <div className="summary-card-metrics">
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Total Legs</div>
+              <div className="summary-metric-val">{legs.length}</div>
+            </div>
+      
+            <div className="summary-card-divider" />
+      
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Filtered</div>
+              <div className="summary-metric-val">{totalFiltered}</div>
+            </div>
+          </div>
         </div>
-
+      
         <div className="summary-card">
-          <div className="summary-card-title">Filtered</div>
-          <div className="summary-card-value">{totalFiltered}</div>
-        </div>
-
-        <div className="summary-card">
-          <div className="summary-card-title">Open</div>
-          <div className="summary-card-value">{totalOpen}</div>
-        </div>
-
-        <div className="summary-card">
-          <div className="summary-card-title">Closed</div>
-          <div className="summary-card-value">{totalClosed}</div>
+          <div className="summary-card-metrics">
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Open</div>
+              <div className="summary-metric-val">{totalOpen}</div>
+            </div>
+      
+            <div className="summary-card-divider" />
+      
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Closed</div>
+              <div className="summary-metric-val">{totalClosed}</div>
+            </div>
+          </div>
         </div>
       </div>
-
       {/* Table Card */}
       <div className="card">
         <LegTable

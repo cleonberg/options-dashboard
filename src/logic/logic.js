@@ -513,3 +513,33 @@ export function computeDailyCashFlowSeries(legs = [], campaigns = []) {
     };
   });
 }
+
+export function computeWeeklyCashFlowSeries(dailySeries = []) {
+  const weeklyMap = {};
+
+  dailySeries.forEach((day) => {
+    const [year, month, date] = day.date.split("-").map(Number);
+    const current = new Date(year, month - 1, date);
+
+    // Monday-based week
+    const mondayOffset = (current.getDay() + 6) % 7;
+    current.setDate(current.getDate() - mondayOffset);
+
+    const weekStart = [
+      current.getFullYear(),
+      String(current.getMonth() + 1).padStart(2, "0"),
+      String(current.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    weeklyMap[weekStart] =
+      (weeklyMap[weekStart] || 0) + day.netCashFlow;
+  });
+
+  return Object.entries(weeklyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([weekStart, netCashFlow]) => ({
+      weekStart,
+      timestamp: new Date(`${weekStart}T00:00:00`).getTime(),
+      netCashFlow: Number(netCashFlow.toFixed(2)),
+    }));
+}

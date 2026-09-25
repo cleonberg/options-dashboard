@@ -12,6 +12,8 @@ import OpenCampaignTable from "./OpenCampaignTable.jsx";
 import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
 import PerformanceChart from "./PerformanceChart.jsx";
 import CashFlowChart from "./CashFlowChart.jsx";
+import CombinedCashFlowChart from "./CombinedCashFlowChart.jsx";
+import WeeklyCashFlowChart from "./WeeklyCashFlowChart.jsx";
 import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
 import CampaignForm from "./CampaignForm.jsx";
 
@@ -398,45 +400,43 @@ export default function DashboardTab({
             </div>
           </div>
 
-          {/* Net Cash Flow / Week */}
+          {/* Weekly Cash Flow Metrics */}
           <div className="summary-card">
-            <div className="summary-card-title">
-              Net Cash Flow / Week
-            </div>
+            <div className="summary-card-metrics">
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">
+                  Net Cash Flow / Week
+                </div>
 
-            <div
-              className={`summary-metric-val ${cashClass(
-                filteredCashFlowWeekly.weekly
-              )}`}
-            >
-              {fmtWholeDollars(filteredCashFlowWeekly.weekly)}
+                <div
+                  className={`summary-metric-val ${cashClass(
+                    filteredCashFlowWeekly.weekly
+                  )}`}
+                >
+                  {fmtWholeDollars(filteredCashFlowWeekly.weekly)}
+                </div>
+              </div>
+
+              <div className="summary-card-divider" />
+
+              <div className="summary-metric-item">
+                <div
+                  className="summary-metric-label"
+                  style={{ color: "#10b981" }}
+                >
+                  This Week's Cash Flow
+                </div>
+
+                <div
+                  className={`summary-metric-val ${cashClass(
+                    currentWeekPremium
+                  )}`}
+                >
+                  {fmtWholeDollars(currentWeekPremium)}
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* This Week's Net Premium */}
-          <div
-            className="summary-card"
-            style={{
-              border: "1px solid #10b981",
-              boxShadow: "0 0 8px rgba(16, 185, 129, 0.15)"
-            }}
-          >
-            <div
-              className="summary-card-title"
-              style={{ color: "#10b981" }}
-            >
-              This Week's Net Premium
-            </div>
-
-            <div
-              className={`summary-metric-val ${cashClass(
-                currentWeekPremium
-              )}`}
-            >
-              {fmtWholeDollars(currentWeekPremium)}
-            </div>
-          </div>
-
         </div>
       </div>
 
@@ -510,13 +510,23 @@ export default function DashboardTab({
       </div>
 
       {activeChart === "cashflow" ? (
-        <CashFlowChart
-          legs={searchFilteredLegs}
-          campaigns={searchFilteredCampaigns}
-          mode="dashboard"
-          startDateFilter={startDateFilter}
-          endDateFilter={endDateFilter}
-        />
+        <div className="cash-flow-charts-grid">
+          <WeeklyCashFlowChart
+            legs={searchFilteredLegs}
+            campaigns={searchFilteredCampaigns}
+            mode="dashboard"
+            startDateFilter={startDateFilter}
+            endDateFilter={endDateFilter}
+          />
+
+          <CombinedCashFlowChart
+            legs={searchFilteredLegs}
+            campaigns={searchFilteredCampaigns}
+            mode="dashboard"
+            startDateFilter={startDateFilter}
+            endDateFilter={endDateFilter}
+          />
+        </div>
       ) : (
         <PerformanceChart
           closedCampaigns={closed}
