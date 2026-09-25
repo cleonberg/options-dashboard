@@ -543,3 +543,214 @@ export function computeWeeklyCashFlowSeries(dailySeries = []) {
       netCashFlow: Number(netCashFlow.toFixed(2)),
     }));
 }
+
+function standaloneMargin(leg, quantity) {
+  const type = String(leg.type || "").toLowerCase();
+  const strike = Number(leg.strike);
+  const openPrice = Number(leg.openPrice);
+
+  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+
+  if (type === "sell_put" || type === "sell_call") {
+    return Number.isFinite(strike)
+      ? 0.3 * strike * quantity * 100
+      : null;
+  }
+
+  if (type === "buy_put" || type === "buy_call") {
+    return Number.isFinite(openPrice)
+      ? openPrice * quantity * 100
+      : null;
+  }
+
+  if (type === "buy_stock" || type === "sell_stock") {
+    return Number.isFinite(openPrice)
+      ? 0.3 * openPrice * quantity
+      : null;
+  }
+
+  return null;
+}
+
+function nextDateKey(dateKey) {
+  const date = new Date(`${dateKey}T00:00:00`);
+  date.setDate(date.getDate() + 1);
+  return getCalendarDay(date);
+}
+
+export function computeMarginEstimate(legs = [], asOfDate = new Date()) {
+  const day = getCalendarDay(asOfDate);
+  if (!day) {
+    return {
+      total: 0,
+      byCampaign: {},
+      unsupportedLegs: [],
+      ambiguousSpreadGroups: 0,
+    };
+  }
+
+  // Treat legs as active through their expiration date, but not on or after
+  // their close date. This produces an end-of-day position estimate.
+  const activeLegs = legs.filter((leg) => {
+    const openDate = getCalendarDay(leg.openDate);
+    const closeDate = getCalendarDay(leg.closeDate);
+    const expiry = getCalendarDay(leg.expiry || leg.expiration);
+
+    if (!openDate || openDate > day) return false;
+    if (closeDate && closeDate <= day) return false;
+    if (expiry && expiry < day) return false;
+    if (leg.isOpen === false && !closeDate) return false;
+
+    return true;
+  });
+
+  const byCampaign = {};
+  const consumedQuantity = new Map();
+  const spreadGroups = new Map();
+  const unsupportedLegs = [];
+  let ambiguousSpreadGroups = 0;
+
+  function addMargin(campaignId, amount) {
+    const key = String(campaignId ?? "unassigned");
+    byCampaign[key] = (byCampaign[key] || 0) + amount;
+  }
+
+  for (const leg of activeLegs) {
+    const type = String(leg.type || "").toLowerCase();
+    const right = type.endsWith("_call")
+      ? "call"
+      : type.endsWith("_put")
+        ? "put"
+        : null;
+    const side = type.startsWith("buy_")
+      ? "buy"
+      : type.startsWith("sell_")
+        ? "sell"
+        : null;
+    const expiry = getCalendarDay(leg.expiry || leg.expiration);
+    const ticker = String(leg.ticker || "").trim().toUpperCase();
+
+    // Only consider options with a campaign and expiration for spread matching.
+    if (!right || !side || !expiry || leg.campaignId == null || !ticker) {
+      continue;
+    }
+
+    const key = JSON.stringify([
+      String(leg.campaignId),
+      ticker,
+      expiry,
+      right,
+    ]);
+    const group = spreadGroups.get(key) || [];
+    group.push({ leg, side });
+    spreadGroups.set(key, group);
+  }
+
+  for (const group of spreadGroups.values()) {
+    const sides = new Set(group.map((item) => item.side));
+
+    // Only infer a spread when exactly two leg records make one clear pair.
+    if (group.length > 2 && sides.size > 1) {
+      ambiguousSpreadGroups += 1;
+      continue;
+    }
+
+    if (group.length !== 2 || sides.size !== 2) continue;
+
+    const [first, second] = group;
+    const firstStrike = Number(first.leg.strike);
+    const secondStrike = Number(second.leg.strike);
+    const firstQuantity = Math.abs(Number(first.leg.qty));
+    const secondQuantity = Math.abs(Number(second.leg.qty));
+
+    if (
+      !Number.isFinite(firstStrike) ||
+      !Number.isFinite(secondStrike) ||
+      !Number.isFinite(firstQuantity) ||
+      !Number.isFinite(secondQuantity) ||
+      firstStrike === secondStrike
+    ) {
+      continue;
+    }
+
+    const matchedQuantity = Math.min(firstQuantity, secondQuantity);
+    if (matchedQuantity <= 0) continue;
+
+    const spreadMargin =
+      Math.abs(firstStrike - secondStrike) * 100 * matchedQuantity;
+
+    addMargin(first.leg.campaignId, spreadMargin);
+    consumedQuantity.set(first.leg, matchedQuantity);
+    consumedQuantity.set(second.leg, matchedQuantity);
+  }
+
+  for (const leg of activeLegs) {
+    const quantity = Math.abs(Number(leg.qty));
+    const remainingQuantity =
+      quantity - (consumedQuantity.get(leg) || 0);
+
+    if (!Number.isFinite(remainingQuantity) || remainingQuantity <= 0) {
+      continue;
+    }
+
+    const amount = standaloneMargin(leg, remainingQuantity);
+
+    if (amount == null) {
+      unsupportedLegs.push(leg);
+    } else {
+      addMargin(leg.campaignId, amount);
+    }
+  }
+
+  const total = Object.values(byCampaign).reduce(
+    (sum, amount) => sum + amount,
+    0
+  );
+
+  return {
+    total,
+    byCampaign,
+    unsupportedLegs,
+    ambiguousSpreadGroups,
+  };
+}
+
+export function computeMarginHistorySeries(
+  legs = [],
+  { startDate = "", endDate = "" } = {}
+) {
+  const today = getCalendarDay(new Date());
+  const lastDate = getCalendarDay(endDate) || today;
+
+  const eventDates = new Set();
+
+  for (const leg of legs) {
+    const openDate = getCalendarDay(leg.openDate);
+    const closeDate = getCalendarDay(leg.closeDate);
+    const expiry = getCalendarDay(leg.expiry || leg.expiration);
+
+    if (openDate) eventDates.add(openDate);
+    if (closeDate) eventDates.add(closeDate);
+    if (expiry) eventDates.add(nextDateKey(expiry));
+  }
+
+  const firstEvent = [...eventDates].sort()[0];
+  const firstDate = getCalendarDay(startDate) || firstEvent || lastDate;
+
+  if (firstDate > lastDate) return [];
+
+  const dates = new Set([firstDate, lastDate]);
+
+  for (const date of eventDates) {
+    if (date >= firstDate && date <= lastDate) {
+      dates.add(date);
+    }
+  }
+
+  return [...dates]
+    .sort()
+    .map((date) => ({
+      date,
+      ...computeMarginEstimate(legs, date),
+    }));
+}

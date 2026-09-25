@@ -4,6 +4,7 @@ import {
   fmtWholeDollars,
   cashClass,
   computeCampaignSummary,
+  computeMarginEstimate,
   fmtCampaignDaysLeft,
   detectStrategy,
   getCampaignDuration
@@ -77,6 +78,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               <th onClick={() => handleSort("netCredit")} style={{ cursor: "pointer", userSelect: "none" }}>
                 Max Credit{getSortIndicator("netCredit")}
               </th>
+              <th>Est. Margin</th>
             </tr>
           </thead>
           <tbody>
@@ -86,6 +88,8 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               const daysLeft = fmtCampaignDaysLeft(c, legs);
               const strategy = detectStrategy(legsForCampaign);
               const durationDays = getCampaignDuration(legsForCampaign);
+              const margin = computeMarginEstimate(legsForCampaign);
+              const estimatedMargin = margin.byCampaign[String(c.id)] || 0;
 
               const tooltipText =
                 legsForCampaign.length > 0
@@ -129,6 +133,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
                   <td className={cashClass(summary.netCredit)}>
                     {fmtWholeDollars(summary.netCredit)}
                   </td>
+                  <td>{fmtWholeDollars(estimatedMargin)}</td>
                 </tr>
               );
             })}

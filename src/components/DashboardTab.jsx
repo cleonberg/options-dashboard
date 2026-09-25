@@ -11,11 +11,12 @@ import {
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
 import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
 import PerformanceChart from "./PerformanceChart.jsx";
-import CashFlowChart from "./CashFlowChart.jsx";
+// import CashFlowChart from "./CashFlowChart.jsx";
 import CombinedCashFlowChart from "./CombinedCashFlowChart.jsx";
 import WeeklyCashFlowChart from "./WeeklyCashFlowChart.jsx";
 import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
 import CampaignForm from "./CampaignForm.jsx";
+import MarginChart from "./MarginChart.jsx";
 
 function isSameId(idA, idB) {
   if (idA == null || idB == null) return false;
@@ -482,7 +483,7 @@ export default function DashboardTab({
           </button>
 
           <button
-            onClick={() => setActiveChart("pl")}
+            onClick={() => setActiveChart("margin")}
             style={{
               padding: "6px 12px",
               fontSize: "12px",
@@ -491,20 +492,20 @@ export default function DashboardTab({
               cursor: "pointer",
               border: "1px solid",
               backgroundColor:
-                activeChart === "pl"
+                activeChart === "margin"
                   ? "#1e293b"
                   : "transparent",
               borderColor:
-                activeChart === "pl"
+                activeChart === "margin"
                   ? "#38bdf8"
                   : "#334155",
               color:
-                activeChart === "pl"
+                activeChart === "margin"
                   ? "#38bdf8"
                   : "#94a3b8"
             }}
           >
-            Closed P/L
+            Margin
           </button>
         </div>
       </div>
@@ -527,6 +528,12 @@ export default function DashboardTab({
             endDateFilter={endDateFilter}
           />
         </div>
+      ) : activeChart === "margin" ? (
+        <MarginChart
+          legs={searchFilteredLegs}
+          startDateFilter={startDateFilter}
+          endDateFilter={endDateFilter}
+        />
       ) : (
         <PerformanceChart
           closedCampaigns={closed}
