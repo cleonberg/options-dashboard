@@ -53,6 +53,11 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
     });
   }, [campaigns, legs, sortConfig]);
 
+  const marginByCampaign = useMemo(
+    () => computeMarginEstimate(legs).byCampaign,
+    [legs]
+  );
+
   const getSortIndicator = (field) => {
     if (sortConfig.field !== field) return " ↕";
     return sortConfig.direction === "asc" ? " ▲" : " ▼";
@@ -88,8 +93,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               const daysLeft = fmtCampaignDaysLeft(c, legs);
               const strategy = detectStrategy(legsForCampaign);
               const durationDays = getCampaignDuration(legsForCampaign);
-              const margin = computeMarginEstimate(legsForCampaign);
-              const estimatedMargin = margin.byCampaign[String(c.id)] || 0;
+              const estimatedMargin = marginByCampaign[String(c.id)] || 0;
 
               const tooltipText =
                 legsForCampaign.length > 0
