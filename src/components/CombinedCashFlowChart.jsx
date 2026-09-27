@@ -61,6 +61,7 @@ function addDays(dateKey, count) {
 export default function CombinedCashFlowChart({
   legs = [],
   campaigns = [],
+  dailySeries: providedDailySeries = null,
   campaign = null,
   startDateFilter = "",
   endDateFilter = "",
@@ -74,11 +75,13 @@ export default function CombinedCashFlowChart({
       ? [campaign]
       : campaigns.filter((item) => item.status === "closed");
 
+    const sourceDailySeries =
+      providedDailySeries && !campaign
+        ? providedDailySeries
+        : computeDailyCashFlowSeries(targetLegs, campaigns);
+
     const cashFlowByDate = new Map(
-      computeDailyCashFlowSeries(targetLegs, campaigns).map((day) => [
-        day.date,
-        day,
-      ])
+      sourceDailySeries.map((day) => [day.date, day])
     );
 
     const performanceByDate = new Map();
@@ -190,7 +193,7 @@ export default function CombinedCashFlowChart({
       },
       ...filteredRows,
     ];
-  }, [legs, campaigns, campaign, startDateFilter, endDateFilter]);
+  }, [legs, campaigns, providedDailySeries, campaign, startDateFilter, endDateFilter]);
 
   const formatDate = (timestamp) =>
     new Date(timestamp).toLocaleDateString("en-US", {

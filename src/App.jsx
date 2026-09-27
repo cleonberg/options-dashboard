@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import Header from "./components/Header.jsx";
 import TabBar from "./components/TabBar.jsx";
-import DashboardTab from "./components/DashboardTab.jsx";
-import AllLegsTab from "./components/AllLegsTab.jsx";
-import CampaignsTab from "./components/CampaignsTab.jsx";
-import SettingsTab from "./components/SettingsTab.jsx";
+const DashboardTab = lazy(() => import("./components/DashboardTab.jsx"));
+const AllLegsTab = lazy(() => import("./components/AllLegsTab.jsx"));
+const CampaignsTab = lazy(() => import("./components/CampaignsTab.jsx"));
+const SettingsTab = lazy(() => import("./components/SettingsTab.jsx"));
 
 import { startAuth } from "./auth.js";
 import { computeDashboardSummary } from "./logic/logic.js";
@@ -201,7 +201,11 @@ export default function App() {
 
       <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <main>{renderTab()}</main>
+      <main>
+        <Suspense fallback={<div className="card">Loading tab...</div>}>
+          {renderTab()}
+        </Suspense>
+      </main>
     </div>
   );
 }

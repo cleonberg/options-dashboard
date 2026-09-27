@@ -190,28 +190,50 @@ export function subscribeToLegs(uid) {
   return onSnapshot(
     qLegs,
     async (snap) => {
-      for (const change of snap.docChanges()) {
-        const id = change.doc.id;
-        const localRecord = await dbLocal.legs.get(id);
+      const changes = snap.docChanges();
 
-        // The Golden Rule: Never overwrite a local dirty record
-        if (localRecord && localRecord.dirty) continue;
+      await dbLocal.transaction("rw", dbLocal.legs, async () => {
+        const ids = changes.map((change) => change.doc.id);
+        const localRecords = await dbLocal.legs.bulkGet(ids);
+        const recordsToPut = [];
+        const idsToDelete = [];
 
-        if (change.type === "added" || change.type === "modified") {
-          const raw = change.doc.data();
-          const data = normalizeLeg({
-            ...raw,
-            id,
-            dirty: false,
-            updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
-            serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
-            clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
-          });
-          await dbLocal.legs.put(data);
-        } else if (change.type === "removed") {
-          await dbLocal.legs.delete(id);
+        changes.forEach((change, index) => {
+          const id = change.doc.id;
+          const localRecord = localRecords[index];
+
+          // Never overwrite local edits that have not synced yet.
+          if (localRecord?.dirty) return;
+
+          if (change.type === "added" || change.type === "modified") {
+            const raw = change.doc.data();
+
+            recordsToPut.push(
+              normalizeLeg({
+                ...raw,
+                id,
+                dirty: false,
+                updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+                serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
+                clientUpdatedAt:
+                  toMillis(raw.clientUpdatedAt) ??
+                  toMillis(raw.updatedAt) ??
+                  Date.now(),
+              })
+            );
+          } else if (change.type === "removed") {
+            idsToDelete.push(id);
+          }
+        });
+
+        if (recordsToPut.length > 0) {
+          await dbLocal.legs.bulkPut(recordsToPut);
         }
-      }
+
+        if (idsToDelete.length > 0) {
+          await dbLocal.legs.bulkDelete(idsToDelete);
+        }
+      });
     },
     (err) => {
       console.error("[subscribeToLegs] listener error", err);

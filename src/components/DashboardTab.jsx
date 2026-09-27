@@ -1,5 +1,5 @@
 // DashboardTab.jsx
-import React, { useState, useMemo } from "react";
+import React, { lazy, Suspense, useState, useMemo } from "react";
 import FilterBar from "./FilterBar.jsx";
 import {
   fmt,
@@ -16,7 +16,7 @@ import CombinedCashFlowChart from "./CombinedCashFlowChart.jsx";
 import WeeklyCashFlowChart from "./WeeklyCashFlowChart.jsx";
 import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
 import CampaignForm from "./CampaignForm.jsx";
-import MarginChart from "./MarginChart.jsx";
+const MarginChart = lazy(() => import("./MarginChart.jsx"));
 
 function isSameId(idA, idB) {
   if (idA == null || idB == null) return false;
@@ -160,6 +160,15 @@ export default function DashboardTab({
     );
   }, [searchFilteredCampaigns, legs]);
 
+  const dashboardDailyCashFlowSeries = useMemo(
+    () =>
+      computeDailyCashFlowSeries(
+        searchFilteredLegs,
+        searchFilteredCampaigns
+      ),
+    [searchFilteredLegs, searchFilteredCampaigns]
+  );
+
   // Realized P/L = closed-leg P/L based on closeDate.
   const filteredNetPL = useMemo(() => {
     return searchFilteredLegs.reduce((total, leg) => {
@@ -178,12 +187,7 @@ export default function DashboardTab({
   // Total net cash flow for the selected date range.
   // Uses the same cash-flow engine as the other cash-flow metrics.
   const filteredNetCashFlow = useMemo(() => {
-    const dailySeries = computeDailyCashFlowSeries(
-      searchFilteredLegs,
-      searchFilteredCampaigns
-    );
-
-    return dailySeries
+    return dashboardDailyCashFlowSeries
       .filter((day) => {
         if (startDateFilter && day.date < startDateFilter) return false;
         if (endDateFilter && day.date > endDateFilter) return false;
@@ -193,12 +197,7 @@ export default function DashboardTab({
         (sum, day) => sum + Number(day.netCashFlow || 0),
         0
       );
-  }, [
-    searchFilteredLegs,
-    searchFilteredCampaigns,
-    startDateFilter,
-    endDateFilter
-  ]);
+  }, [dashboardDailyCashFlowSeries, startDateFilter, endDateFilter]);
 
   const displaySummary = useMemo(() => {
     const filteredLegs = legs.filter((leg) =>
@@ -226,12 +225,7 @@ export default function DashboardTab({
 
   // Net Cash Flow / Week.
   const filteredCashFlowWeekly = useMemo(() => {
-    const dailySeries = computeDailyCashFlowSeries(
-      searchFilteredLegs,
-      searchFilteredCampaigns
-    );
-
-    const filteredDays = dailySeries.filter((day) => {
+    const filteredDays = dashboardDailyCashFlowSeries.filter((day) => {
       if (startDateFilter && day.date < startDateFilter) return false;
       if (endDateFilter && day.date > endDateFilter) return false;
       return true;
@@ -267,8 +261,7 @@ export default function DashboardTab({
       weeks
     };
   }, [
-    searchFilteredLegs,
-    searchFilteredCampaigns,
+    dashboardDailyCashFlowSeries,
     startDateFilter,
     endDateFilter
   ]);
@@ -515,6 +508,7 @@ export default function DashboardTab({
           <WeeklyCashFlowChart
             legs={searchFilteredLegs}
             campaigns={searchFilteredCampaigns}
+            dailySeries={dashboardDailyCashFlowSeries}
             mode="dashboard"
             startDateFilter={startDateFilter}
             endDateFilter={endDateFilter}
@@ -523,17 +517,20 @@ export default function DashboardTab({
           <CombinedCashFlowChart
             legs={searchFilteredLegs}
             campaigns={searchFilteredCampaigns}
+            dailySeries={dashboardDailyCashFlowSeries}
             mode="dashboard"
             startDateFilter={startDateFilter}
             endDateFilter={endDateFilter}
           />
         </div>
       ) : activeChart === "margin" ? (
-        <MarginChart
-          legs={searchFilteredLegs}
-          startDateFilter={startDateFilter}
-          endDateFilter={endDateFilter}
-        />
+        <Suspense fallback={<div className="card">Loading margin chart...</div>}>
+          <MarginChart
+            legs={searchFilteredLegs}
+            startDateFilter={startDateFilter}
+            endDateFilter={endDateFilter}
+          />
+        </Suspense>
       ) : (
         <PerformanceChart
           closedCampaigns={closed}

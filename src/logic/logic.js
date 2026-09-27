@@ -552,30 +552,196 @@ function standaloneMargin(leg, quantity) {
   if (!Number.isFinite(quantity) || quantity <= 0) return null;
 
   if (type === "sell_put" || type === "sell_call") {
-    return Number.isFinite(strike)
-      ? 0.3 * strike * quantity * 100
-      : null;
+    return Number.isFinite(strike) ? 0.3 * strike * quantity * 100 : null;
   }
 
   if (type === "buy_put" || type === "buy_call") {
-    return Number.isFinite(openPrice)
-      ? openPrice * quantity * 100
-      : null;
+    return Number.isFinite(openPrice) ? openPrice * quantity * 100 : null;
   }
 
   if (type === "buy_stock" || type === "sell_stock") {
-    return Number.isFinite(openPrice)
-      ? 0.3 * openPrice * quantity
-      : null;
+    return Number.isFinite(openPrice) ? 0.3 * openPrice * quantity : null;
   }
 
   return null;
 }
 
 function nextDateKey(dateKey) {
-  const date = new Date(`${dateKey}T00:00:00`);
+  const date = new Date(String(dateKey) + "T00:00:00");
+  if (isNaN(date.getTime())) return null;
   date.setDate(date.getDate() + 1);
   return getCalendarDay(date);
+}
+
+function normalizeLegForMargin(leg, index) {
+  const type = String(leg.type || "").toLowerCase();
+  const right = type.endsWith("_call")
+    ? "call"
+    : type.endsWith("_put")
+      ? "put"
+      : null;
+  const side = type.startsWith("buy_")
+    ? "buy"
+    : type.startsWith("sell_")
+      ? "sell"
+      : null;
+
+  const openDate = getCalendarDay(leg.openDate);
+  const closeDate = getCalendarDay(leg.closeDate);
+  const expiryDate = getCalendarDay(leg.expiry || leg.expiration);
+  const expiryEndDate = expiryDate ? nextDateKey(expiryDate) : null;
+
+  const qtyAbs = Math.abs(Number(leg.qty));
+  const strike = Number(leg.strike);
+  const openPrice = Number(leg.openPrice);
+  const ticker = String(leg.ticker || "").trim().toUpperCase();
+  const campaignId = String(leg.campaignId ?? "unassigned");
+  const legKey = String(leg.id ?? "__idx_" + String(index));
+
+  const spreadKey =
+    right && side && expiryDate && ticker
+      ? campaignId + "|" + ticker + "|" + expiryDate + "|" + right
+      : null;
+
+  return {
+    source: leg,
+    legKey,
+    campaignId,
+    type,
+    right,
+    side,
+    spreadKey,
+    openDate,
+    closeDate,
+    expiryDate,
+    expiryEndDate,
+    qtyAbs,
+    strike,
+    openPrice,
+    explicitlyClosedWithoutDate: leg.isOpen === false && !closeDate,
+  };
+}
+
+function buildMarginRuntime(legs) {
+  const normalized = [];
+  const eventsByDay = Object.create(null);
+  const anchorDays = new Set();
+
+  function pushEvent(day, op, leg) {
+    if (!day) return;
+    if (!eventsByDay[day]) eventsByDay[day] = [];
+    eventsByDay[day].push({ op, leg });
+  }
+
+  for (let i = 0; i < legs.length; i += 1) {
+    const n = normalizeLegForMargin(legs[i], i);
+    normalized.push(n);
+
+    if (n.openDate) anchorDays.add(n.openDate);
+    if (n.closeDate) anchorDays.add(n.closeDate);
+    if (n.expiryEndDate) anchorDays.add(n.expiryEndDate);
+
+    if (!n.openDate) continue;
+    if (n.explicitlyClosedWithoutDate) continue;
+
+    pushEvent(n.openDate, "add", n);
+
+    if (n.closeDate) {
+      pushEvent(n.closeDate, "remove", n);
+    } else if (n.expiryEndDate) {
+      pushEvent(n.expiryEndDate, "remove", n);
+    }
+  }
+
+  return { normalized, eventsByDay, anchorDays };
+}
+
+function evaluateMarginFromActiveLegs(activeLegs) {
+  const byCampaign = {};
+  const consumedQuantityByLegKey = new Map();
+  const spreadGroups = new Map();
+  const unsupportedLegs = [];
+  let ambiguousSpreadGroups = 0;
+
+  function addMargin(campaignId, amount) {
+    const key = String(campaignId ?? "unassigned");
+    byCampaign[key] = (byCampaign[key] || 0) + amount;
+  }
+
+  for (let i = 0; i < activeLegs.length; i += 1) {
+    const leg = activeLegs[i];
+    if (!leg.spreadKey) continue;
+
+    const group = spreadGroups.get(leg.spreadKey) || [];
+    group.push(leg);
+    spreadGroups.set(leg.spreadKey, group);
+  }
+
+  for (const group of spreadGroups.values()) {
+    const sides = new Set(group.map((item) => item.side));
+
+    if (group.length > 2 && sides.size > 1) {
+      ambiguousSpreadGroups += 1;
+      continue;
+    }
+
+    if (group.length !== 2 || sides.size !== 2) continue;
+
+    const first = group[0];
+    const second = group[1];
+
+    if (
+      !Number.isFinite(first.strike) ||
+      !Number.isFinite(second.strike) ||
+      !Number.isFinite(first.qtyAbs) ||
+      !Number.isFinite(second.qtyAbs) ||
+      first.strike === second.strike
+    ) {
+      continue;
+    }
+
+    const matchedQty = Math.min(first.qtyAbs, second.qtyAbs);
+    if (matchedQty <= 0) continue;
+
+    const spreadMargin = Math.abs(first.strike - second.strike) * 100 * matchedQty;
+
+    addMargin(first.campaignId, spreadMargin);
+    consumedQuantityByLegKey.set(first.legKey, matchedQty);
+    consumedQuantityByLegKey.set(second.legKey, matchedQty);
+  }
+
+  for (let i = 0; i < activeLegs.length; i += 1) {
+    const leg = activeLegs[i];
+    const consumed = consumedQuantityByLegKey.get(leg.legKey) || 0;
+    const remaining = leg.qtyAbs - consumed;
+
+    if (!Number.isFinite(remaining) || remaining <= 0) continue;
+
+    const amount = standaloneMargin(leg.source, remaining);
+
+    if (amount == null) {
+      unsupportedLegs.push(leg.source);
+    } else {
+      addMargin(leg.campaignId, amount);
+    }
+  }
+
+  const total = Object.values(byCampaign).reduce((sum, amount) => sum + amount, 0);
+
+  return {
+    total,
+    byCampaign,
+    unsupportedLegs,
+    ambiguousSpreadGroups,
+  };
+}
+
+function isLegActiveOnDay(leg, day) {
+  if (!leg.openDate || leg.openDate > day) return false;
+  if (leg.closeDate && leg.closeDate <= day) return false;
+  if (leg.expiryDate && leg.expiryDate < day) return false;
+  if (leg.explicitlyClosedWithoutDate) return false;
+  return true;
 }
 
 export function computeMarginEstimate(legs = [], asOfDate = new Date()) {
@@ -589,168 +755,81 @@ export function computeMarginEstimate(legs = [], asOfDate = new Date()) {
     };
   }
 
-  // Treat legs as active through their expiration date, but not on or after
-  // their close date. This produces an end-of-day position estimate.
-  const activeLegs = legs.filter((leg) => {
-    const openDate = getCalendarDay(leg.openDate);
-    const closeDate = getCalendarDay(leg.closeDate);
-    const expiry = getCalendarDay(leg.expiry || leg.expiration);
-
-    if (!openDate || openDate > day) return false;
-    if (closeDate && closeDate <= day) return false;
-    if (expiry && expiry < day) return false;
-    if (leg.isOpen === false && !closeDate) return false;
-
-    return true;
-  });
-
-  const byCampaign = {};
-  const consumedQuantity = new Map();
-  const spreadGroups = new Map();
-  const unsupportedLegs = [];
-  let ambiguousSpreadGroups = 0;
-
-  function addMargin(campaignId, amount) {
-    const key = String(campaignId ?? "unassigned");
-    byCampaign[key] = (byCampaign[key] || 0) + amount;
-  }
-
-  for (const leg of activeLegs) {
-    const type = String(leg.type || "").toLowerCase();
-    const right = type.endsWith("_call")
-      ? "call"
-      : type.endsWith("_put")
-        ? "put"
-        : null;
-    const side = type.startsWith("buy_")
-      ? "buy"
-      : type.startsWith("sell_")
-        ? "sell"
-        : null;
-    const expiry = getCalendarDay(leg.expiry || leg.expiration);
-    const ticker = String(leg.ticker || "").trim().toUpperCase();
-
-    // Only consider options with a campaign and expiration for spread matching.
-    if (!right || !side || !expiry || leg.campaignId == null || !ticker) {
-      continue;
-    }
-
-    const key = JSON.stringify([
-      String(leg.campaignId),
-      ticker,
-      expiry,
-      right,
-    ]);
-    const group = spreadGroups.get(key) || [];
-    group.push({ leg, side });
-    spreadGroups.set(key, group);
-  }
-
-  for (const group of spreadGroups.values()) {
-    const sides = new Set(group.map((item) => item.side));
-
-    // Only infer a spread when exactly two leg records make one clear pair.
-    if (group.length > 2 && sides.size > 1) {
-      ambiguousSpreadGroups += 1;
-      continue;
-    }
-
-    if (group.length !== 2 || sides.size !== 2) continue;
-
-    const [first, second] = group;
-    const firstStrike = Number(first.leg.strike);
-    const secondStrike = Number(second.leg.strike);
-    const firstQuantity = Math.abs(Number(first.leg.qty));
-    const secondQuantity = Math.abs(Number(second.leg.qty));
-
-    if (
-      !Number.isFinite(firstStrike) ||
-      !Number.isFinite(secondStrike) ||
-      !Number.isFinite(firstQuantity) ||
-      !Number.isFinite(secondQuantity) ||
-      firstStrike === secondStrike
-    ) {
-      continue;
-    }
-
-    const matchedQuantity = Math.min(firstQuantity, secondQuantity);
-    if (matchedQuantity <= 0) continue;
-
-    const spreadMargin =
-      Math.abs(firstStrike - secondStrike) * 100 * matchedQuantity;
-
-    addMargin(first.leg.campaignId, spreadMargin);
-    consumedQuantity.set(first.leg, matchedQuantity);
-    consumedQuantity.set(second.leg, matchedQuantity);
-  }
-
-  for (const leg of activeLegs) {
-    const quantity = Math.abs(Number(leg.qty));
-    const remainingQuantity =
-      quantity - (consumedQuantity.get(leg) || 0);
-
-    if (!Number.isFinite(remainingQuantity) || remainingQuantity <= 0) {
-      continue;
-    }
-
-    const amount = standaloneMargin(leg, remainingQuantity);
-
-    if (amount == null) {
-      unsupportedLegs.push(leg);
-    } else {
-      addMargin(leg.campaignId, amount);
-    }
-  }
-
-  const total = Object.values(byCampaign).reduce(
-    (sum, amount) => sum + amount,
-    0
-  );
-
-  return {
-    total,
-    byCampaign,
-    unsupportedLegs,
-    ambiguousSpreadGroups,
-  };
+  const runtime = buildMarginRuntime(legs);
+  const activeLegs = runtime.normalized.filter((leg) => isLegActiveOnDay(leg, day));
+  return evaluateMarginFromActiveLegs(activeLegs);
 }
 
 export function computeMarginHistorySeries(
   legs = [],
   { startDate = "", endDate = "" } = {}
 ) {
+  const runtime = buildMarginRuntime(legs);
   const today = getCalendarDay(new Date());
   const lastDate = getCalendarDay(endDate) || today;
 
-  const eventDates = new Set();
-
-  for (const leg of legs) {
-    const openDate = getCalendarDay(leg.openDate);
-    const closeDate = getCalendarDay(leg.closeDate);
-    const expiry = getCalendarDay(leg.expiry || leg.expiration);
-
-    if (openDate) eventDates.add(openDate);
-    if (closeDate) eventDates.add(closeDate);
-    if (expiry) eventDates.add(nextDateKey(expiry));
-  }
-
-  const firstEvent = [...eventDates].sort()[0];
+  const sortedAnchors = Array.from(runtime.anchorDays).sort();
+  const firstEvent = sortedAnchors[0];
   const firstDate = getCalendarDay(startDate) || firstEvent || lastDate;
 
-  if (firstDate > lastDate) return [];
+  if (!firstDate || !lastDate || firstDate > lastDate) return [];
 
-  const dates = new Set([firstDate, lastDate]);
+  const renderDays = new Set([firstDate, lastDate]);
+  for (let i = 0; i < sortedAnchors.length; i += 1) {
+    const day = sortedAnchors[i];
+    if (day >= firstDate && day <= lastDate) renderDays.add(day);
+  }
+  const sortedRenderDays = Array.from(renderDays).sort();
 
-  for (const date of eventDates) {
-    if (date >= firstDate && date <= lastDate) {
-      dates.add(date);
+  const sortedEventDays = Object.keys(runtime.eventsByDay).sort();
+  const activeMap = new Map();
+  let eventCursor = 0;
+
+  function applyEvents(day) {
+    const events = runtime.eventsByDay[day] || [];
+    for (let i = 0; i < events.length; i += 1) {
+      const ev = events[i];
+      if (ev.op === "add") {
+        activeMap.set(ev.leg.legKey, ev.leg);
+      } else {
+        activeMap.delete(ev.leg.legKey);
+      }
     }
   }
 
-  return [...dates]
-    .sort()
-    .map((date) => ({
-      date,
-      ...computeMarginEstimate(legs, date),
-    }));
+  while (
+    eventCursor < sortedEventDays.length &&
+    sortedEventDays[eventCursor] <= firstDate
+  ) {
+    applyEvents(sortedEventDays[eventCursor]);
+    eventCursor += 1;
+  }
+
+  const output = [];
+
+  for (let i = 0; i < sortedRenderDays.length; i += 1) {
+    const day = sortedRenderDays[i];
+
+    if (i > 0) {
+      while (
+        eventCursor < sortedEventDays.length &&
+        sortedEventDays[eventCursor] <= day
+      ) {
+        applyEvents(sortedEventDays[eventCursor]);
+        eventCursor += 1;
+      }
+    }
+
+    const snapshot = evaluateMarginFromActiveLegs(Array.from(activeMap.values()));
+
+    output.push({
+      date: day,
+      total: snapshot.total,
+      byCampaign: snapshot.byCampaign,
+      unsupportedLegs: snapshot.unsupportedLegs,
+      ambiguousSpreadGroups: snapshot.ambiguousSpreadGroups,
+    });
+  }
+
+  return output;
 }

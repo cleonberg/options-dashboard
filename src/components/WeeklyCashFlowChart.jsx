@@ -22,6 +22,7 @@ import {
 export default function WeeklyCashFlowChart({
   legs = [],
   campaigns = [],
+  dailySeries: providedDailySeries = null,
   campaign = null,
   mode = "dashboard",
   startDateFilter = "",
@@ -43,22 +44,25 @@ export default function WeeklyCashFlowChart({
 
     const targetCampaigns = campaign ? [campaign] : campaigns;
 
-    const dailySeries = computeDailyCashFlowSeries(
-      targetLegs,
-      targetCampaigns
-    ).filter((day) => {
+    const sourceDailySeries =
+      providedDailySeries && mode !== "single" && !campaign
+        ? providedDailySeries
+        : computeDailyCashFlowSeries(targetLegs, targetCampaigns);
+
+    const filteredDailySeries = sourceDailySeries.filter((day) => {
       if (startDateFilter && day.date < startDateFilter) return false;
       if (endDateFilter && day.date > endDateFilter) return false;
       return true;
     });
 
-    return computeWeeklyCashFlowSeries(dailySeries).map((entry) => ({
+    return computeWeeklyCashFlowSeries(filteredDailySeries).map((entry) => ({
       ...entry,
       annualizedCashFlow: entry.netCashFlow * 52,
     }));
   }, [
     legs,
     campaigns,
+    providedDailySeries,
     campaign,
     mode,
     startDateFilter,

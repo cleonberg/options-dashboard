@@ -18,35 +18,80 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
     }));
   };
 
-  const sortedCampaigns = useMemo(() => {
-    return [...campaigns].sort((a, b) => {
-      let aVal, bVal;
+  const campaignLegsMap = useMemo(() => {
+    const map = new Map();
 
-      const legsA = legs.filter((l) => String(l.campaignId) === String(a.id));
-      const legsB = legs.filter((l) => String(l.campaignId) === String(b.id));
+    for (const campaign of campaigns) {
+      map.set(String(campaign.id), []);
+    }
+
+    for (const leg of legs) {
+      const campaignLegs = map.get(String(leg.campaignId));
+      if (campaignLegs) campaignLegs.push(leg);
+    }
+
+    return map;
+  }, [campaigns, legs]);
+
+  const campaignMetricsMap = useMemo(() => {
+    const map = new Map();
+
+    for (const campaign of campaigns) {
+      const campaignId = String(campaign.id);
+      const legsForCampaign = campaignLegsMap.get(campaignId) || [];
+      const summary = computeCampaignSummary(campaign, legsForCampaign);
+      const parsedEndDate = new Date(campaign.endDate || 0).getTime();
+
+      const tooltipText = legsForCampaign.length > 0
+        ? `Campaign Legs (${legsForCampaign.length}):\n` +
+          legsForCampaign.map((leg) => {
+            const status = leg.isOpen ? "🟢 Open" : "🔴 Closed";
+            const strike = leg.strike ? ` @ ${leg.strike}` : "";
+            const expiry = leg.expiry ? ` (Exp: ${leg.expiry})` : "";
+            return `${status} | ${leg.qty} ${leg.type}${strike}${expiry}`;
+          }).join("\n")
+        : "No legs in this campaign";
+
+      map.set(campaignId, {
+        summary,
+        strategy: detectStrategy(legsForCampaign),
+        durationDays: getCampaignDuration(legsForCampaign),
+        endDateTime: Number.isFinite(parsedEndDate) ? parsedEndDate : 0,
+        tooltipText
+      });
+    }
+
+    return map;
+  }, [campaigns, campaignLegsMap]);
+
+  const sortedCampaigns = useMemo(() => {
+    const direction = sortConfig.direction === "asc" ? 1 : -1;
+
+    return [...campaigns].sort((a, b) => {
+      const aMetrics = campaignMetricsMap.get(String(a.id));
+      const bMetrics = campaignMetricsMap.get(String(b.id));
 
       if (sortConfig.field === "ticker") {
-        aVal = a.ticker || "";
-        bVal = b.ticker || "";
-        return sortConfig.direction === "asc"
-          ? aVal.localeCompare(bVal)
-          : bVal.localeCompare(aVal);
+        return direction * (a.ticker || "").localeCompare(b.ticker || "");
       }
 
-      if (sortConfig.field === "endDate") {
-        aVal = new Date(a.endDate || 0).getTime();
-        bVal = new Date(b.endDate || 0).getTime();
-      } else if (sortConfig.field === "duration") {
-        aVal = getCampaignDuration(legsA);
-        bVal = getCampaignDuration(legsB);
+      let aValue;
+      let bValue;
+
+      if (sortConfig.field === "duration") {
+        aValue = aMetrics?.durationDays || 0;
+        bValue = bMetrics?.durationDays || 0;
       } else if (sortConfig.field === "totalPL") {
-        aVal = computeCampaignSummary(a, legsA).totalPL || 0;
-        bVal = computeCampaignSummary(b, legsB).totalPL || 0;
+        aValue = aMetrics?.summary?.totalPL || 0;
+        bValue = bMetrics?.summary?.totalPL || 0;
+      } else {
+        aValue = aMetrics?.endDateTime || 0;
+        bValue = bMetrics?.endDateTime || 0;
       }
 
-      return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
+      return direction * (aValue - bValue);
     });
-  }, [campaigns, legs, sortConfig]);
+  }, [campaigns, campaignMetricsMap, sortConfig]);
 
   const getSortIndicator = (field) => {
     if (sortConfig.field !== field) return " ↕";
@@ -79,25 +124,16 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
         </thead>
         <tbody>
           {sortedCampaigns.map(c => {
-            const legsForCampaign = legs.filter(l => String(l.campaignId) === String(c.id));
-            const summary = computeCampaignSummary(c, legsForCampaign);
-            const strategy = detectStrategy(legsForCampaign);
-            const durationDays = getCampaignDuration(legsForCampaign);
-
-            const tooltipText = legsForCampaign.length > 0 
-              ? `Campaign Legs (${legsForCampaign.length}):\n` + legsForCampaign.map(l => {
-                  const status = l.isOpen ? "🟢 Open" : "🔴 Closed";
-                  const strikeStr = l.strike ? ` @ ${l.strike}` : "";
-                  const expStr = l.expiry ? ` (Exp: ${l.expiry})` : "";
-                  return `${status} | ${l.qty} ${l.type}${strikeStr}${expStr}`;
-                }).join("\n")
-              : "No legs in this campaign";
+            const metrics = campaignMetricsMap.get(String(c.id));
+            const summary = metrics?.summary;
+            const strategy = metrics?.strategy;
+            const durationDays = metrics?.durationDays ?? 0;
 
             return (
-              <tr 
-                key={c.id} 
+              <tr
+                key={c.id}
                 onClick={() => onSelect(c.id)}
-                title={tooltipText}
+                title={metrics?.tooltipText || "No legs in this campaign"}
                 style={{ cursor: "pointer" }}
               >
                 <td>
