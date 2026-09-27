@@ -35,14 +35,6 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
-  const [editingLeg, setEditingLeg] = useState(null);
-
-  const [rollSourceLeg, setRollSourceLeg] = useState(null);
-  const [rollClosePrice, setRollClosePrice] = useState("");
-  const [rollQty, setRollQty] = useState("");
-  const [rollStrike, setRollStrike] = useState("");
-  const [rollExpiry, setRollExpiry] = useState("");
-  const [rollOpenPrice, setRollOpenPrice] = useState("");
 
   const [syncStatus, setSyncStatus] = useState("synced");
   const [lastSync, setLastSync] = useState(null);
@@ -164,20 +156,6 @@ export default function App() {
             legs={legs}
             selectedCampaignId={selectedCampaignId}
             setSelectedCampaignId={setSelectedCampaignId}
-            editingLeg={editingLeg}
-            setEditingLeg={setEditingLeg}
-            rollSourceLeg={rollSourceLeg}
-            setRollSourceLeg={setRollSourceLeg}
-            rollClosePrice={rollClosePrice}
-            setRollClosePrice={setRollClosePrice}
-            rollQty={rollQty}
-            setRollQty={setRollQty}
-            rollStrike={rollStrike}
-            setRollStrike={setRollStrike}
-            rollExpiry={rollExpiry}
-            setRollExpiry={setRollExpiry}
-            rollOpenPrice={rollOpenPrice}
-            setRollOpenPrice={setRollOpenPrice}
             uid={uid}
           />
         );

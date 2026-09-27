@@ -13,16 +13,21 @@ import {
   fmtWholeDollars,
 } from "../logic/logic.js";
 
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 function formatDate(value) {
   const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
+  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 }
+
+const tooltipFormatter = (value) => [
+  fmtWholeDollars(value),
+  "Estimated margin",
+];
 
 export default function MarginChart({
   legs = [],
@@ -68,11 +73,38 @@ export default function MarginChart({
               tick={{ fontSize: 12 }}
             />
             <Tooltip
-              labelFormatter={formatDate}
-              formatter={(value) => [
-                fmtWholeDollars(value),
-                "Estimated margin",
-              ]}
+              cursor={false}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+
+                const { date, total } = payload[0].payload;
+
+                return (
+                  <div
+                    style={{
+                      backgroundColor: "#1b2b4f",
+                      border: "1px solid #24345f",
+                      borderRadius: "6px",
+                      padding: "8px 12px",
+                      color: "#fff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: "bold",
+                        marginBottom: "4px",
+                        fontSize: "13px",
+                      }}
+                    >
+                      Date: {formatDate(date)}
+                    </div>
+
+                    <div style={{ fontSize: "12px", color: "#f59e0b" }}>
+                      Estimated Margin: {fmtWholeDollars(total)}
+                    </div>
+                  </div>
+                );
+              }}
             />
             <Line
               type="stepAfter"

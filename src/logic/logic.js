@@ -545,9 +545,7 @@ export function computeWeeklyCashFlowSeries(dailySeries = []) {
 }
 
 function standaloneMargin(leg, quantity) {
-  const type = String(leg.type || "").toLowerCase();
-  const strike = Number(leg.strike);
-  const openPrice = Number(leg.openPrice);
+  const { type, strike, openPrice } = leg;
 
   if (!Number.isFinite(quantity) || quantity <= 0) return null;
 
@@ -678,17 +676,23 @@ function evaluateMarginFromActiveLegs(activeLegs) {
   }
 
   for (const group of spreadGroups.values()) {
-    const sides = new Set(group.map((item) => item.side));
-
-    if (group.length > 2 && sides.size > 1) {
-      ambiguousSpreadGroups += 1;
-      continue;
-    }
-
-    if (group.length !== 2 || sides.size !== 2) continue;
-
     const first = group[0];
     const second = group[1];
+
+    if (group.length > 2) {
+      let hasBuy = false, hasSell = false;
+      for (let j = 0; j < group.length; j++) {
+        if (group[j].side === "buy") hasBuy = true;
+        if (group[j].side === "sell") hasSell = true;
+      }
+      if (hasBuy && hasSell) {
+        ambiguousSpreadGroups += 1;
+        continue;
+      }
+    }
+
+    // Ensure exactly 2 legs with opposing sides
+    if (group.length !== 2 || first.side === second.side) continue;
 
     if (
       !Number.isFinite(first.strike) ||
