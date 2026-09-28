@@ -137,12 +137,15 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
     return sortConfig.direction === "asc" ? " ▲" : " ▼";
   };
 
-  // const openLegs = useMemo(() => legs.filter((leg) => leg.isOpen), [legs]);
+  const openLegs = useMemo(
+    () => legs.filter((leg) => leg.isOpen),
+    [legs]
+  );
 
-  // const marginByCampaign = useMemo(
-  //   () => computeMarginEstimate(openLegs).byCampaign,
-  //   [openLegs]
-  // );
+  const marginByCampaign = useMemo(
+    () => computeMarginEstimate(openLegs).byCampaign,
+    [openLegs]
+  );
 
   return (
     <div className="open-campaigns-container">
@@ -175,7 +178,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               >
                 Max Credit{getSortIndicator("netCredit")}
               </th>
-              {/* <th>Est. Margin</th> */}
+              <th>Est. Margin</th>
             </tr>
           </thead>
           <tbody>
@@ -187,7 +190,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               const strategy = metrics?.strategy || detectStrategy(legsForCampaign);
               const durationDays = metrics?.durationDays ?? 0;
               const tooltipText = metrics?.tooltipText || "No legs in this campaign";
-              // const estimatedMargin = marginByCampaign[String(c.id)] || 0;
+              const estimatedMargin = marginByCampaign[String(c.id)] ?? 0;
 
               return (
                 <tr
@@ -225,7 +228,7 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
                     {fmtWholeDollars(summary.netCredit)}
                   </td>
 
-                  {/* <td>{fmtWholeDollars(estimatedMargin)}</td> */}
+                  <td>{fmtWholeDollars(estimatedMargin)}</td>
                 </tr>
               );
             })}

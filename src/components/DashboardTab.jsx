@@ -2,25 +2,28 @@
 import React, { lazy, Suspense, useState, useMemo } from "react";
 import FilterBar from "./FilterBar.jsx";
 import {
-  fmt,
   fmtWholeDollars,
   cashClass,
   computeLegPL,
   computeDailyCashFlowSeries
 } from "../logic/logic.js";
+
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
 import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
 import PerformanceChart from "./PerformanceChart.jsx";
-// import CashFlowChart from "./CashFlowChart.jsx";
 import CombinedCashFlowChart from "./CombinedCashFlowChart.jsx";
 import WeeklyCashFlowChart from "./WeeklyCashFlowChart.jsx";
 import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
 import CampaignForm from "./CampaignForm.jsx";
 const MarginChart = lazy(() => import("./MarginChart.jsx"));
 
+function normalizeId(id) {
+  return id == null ? null : String(id).trim().toLowerCase();
+}
+
 function isSameId(idA, idB) {
-  if (idA == null || idB == null) return false;
-  return String(idA).trim().toLowerCase() === String(idB).trim().toLowerCase();
+  const normalizedA = normalizeId(idA);
+  return normalizedA !== null && normalizedA === normalizeId(idB);
 }
 
 function toISODateStr(d) {
@@ -79,31 +82,47 @@ export default function DashboardTab({
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
   const [activeChart, setActiveChart] = useState("cashflow");
 
+  const legsByCampaign = useMemo(() => {
+    const map = new Map();
+
+    for (const leg of legs) {
+      const campaignId = normalizeId(leg.campaignId);
+      if (campaignId === null) continue;
+
+      const campaignLegs = map.get(campaignId);
+      if (campaignLegs) {
+        campaignLegs.push(leg);
+      } else {
+        map.set(campaignId, [leg]);
+      }
+    }
+
+    return map;
+  }, [legs]);
+
   // Search filter only. Date filters are applied to transaction dates below.
   const searchFilteredCampaigns = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return campaigns;
-
-    return campaigns.filter((c) => {
-      if (
-        String(c.ticker || "")
-          .toLowerCase()
-          .includes(term)
-      ) {
-        return true;
-      }
-
-      return legs
-        .filter((l) => isSameId(l.campaignId, c.id))
-        .some((l) =>
-          [l.symbol, l.notes, l.description]
-            .filter(Boolean)
-            .some((value) =>
-              String(value).toLowerCase().includes(term)
-            )
-        );
+  
+    return campaigns.filter((campaign) => {
+      const matchesCampaign = [campaign.name, campaign.ticker]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+  
+      if (matchesCampaign) return true;
+  
+      const campaignId = normalizeId(campaign.id);
+      if (campaignId === null) return false;
+  
+      const campaignLegs = legsByCampaign.get(campaignId) || [];
+      return campaignLegs.some((leg) =>
+        [leg.symbol, leg.notes, leg.description]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(term))
+      );
     });
-  }, [campaigns, legs, searchTerm]);
+  }, [campaigns, legsByCampaign, searchTerm]);
 
   // Campaign filtering used by the tables.
   const filteredCampaigns = useMemo(() => {
@@ -200,17 +219,22 @@ export default function DashboardTab({
   }, [dashboardDailyCashFlowSeries, startDateFilter, endDateFilter]);
 
   const displaySummary = useMemo(() => {
-    const filteredLegs = legs.filter((leg) =>
-      filteredCampaigns.some((c) =>
-        isSameId(leg.campaignId, c.id)
-      )
+    const filteredCampaignIds = new Set(
+      filteredCampaigns
+        .map((campaign) => normalizeId(campaign.id))
+        .filter((campaignId) => campaignId !== null)
     );
+
+    const filteredLegs = legs.filter((leg) => {
+      const campaignId = normalizeId(leg.campaignId);
+      return campaignId !== null && filteredCampaignIds.has(campaignId);
+    });
 
     return {
       netPL: filteredNetPL,
       netCashFlow: filteredNetCashFlow,
-      openLegCount: filteredLegs.filter((l) => l.isOpen).length,
-      closedLegCount: filteredLegs.filter((l) => !l.isOpen).length,
+      openLegCount: filteredLegs.filter((leg) => leg.isOpen).length,
+      closedLegCount: filteredLegs.filter((leg) => !leg.isOpen).length,
       activeCampaigns: open.length,
       closedCampaigns: closed.length
     };

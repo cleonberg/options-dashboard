@@ -1,8 +1,12 @@
 // import dbLocal from "../db/dexie.js";
-
 import { 
   updateCampaign, 
 } from "../sync/sync.js";
+
+const DEFAULT_MARGIN_RATIO = 0.3;
+const MARGIN_RATIO_BY_TICKER = new Map([
+  ["SOXL", 0.6],
+]);
 
 /* -------------------------------------------------------
    Formatting Helpers
@@ -42,30 +46,47 @@ export function cashClass(x) {
    Per-Leg P/L
 ------------------------------------------------------- */
 export function computeLegPL(leg) {
-  const isOption = leg.type.includes("call") || leg.type.includes("put");
-  const multiplier = isOption ? 100 : 1;
+  if (!leg) return null;
 
-  const isSell = leg.type.startsWith("sell_");
-  const isBuy  = leg.type.startsWith("buy_");
+  const type = String(leg.type ?? "").toLowerCase();
+  if (!type) return null;
 
-  // ⭐ No P/L until closed → return null
-  if (leg.closePrice == null) {
+  const isBlank = (value) =>
+    typeof value === "string" && value.trim() === "";
+
+  if (leg.closePrice == null || isBlank(leg.closePrice)) {
     return null;
   }
 
-  // ⭐ Realized P/L
-  if (isSell) {
-    // credit trade: profit when close < open
-    return (leg.openPrice - leg.closePrice) * leg.qty * multiplier;
+  if (leg.openPrice == null || isBlank(leg.openPrice) ||
+      leg.qty == null || isBlank(leg.qty)) {
+    return null;
   }
 
-  if (isBuy) {
-    // debit trade: profit when close > open
-    return (leg.closePrice - leg.openPrice) * leg.qty * multiplier;
+  const openPrice = Number(leg.openPrice);
+  const closePrice = Number(leg.closePrice);
+  const qty = Number(leg.qty);
+
+  if (
+    !Number.isFinite(openPrice) ||
+    !Number.isFinite(closePrice) ||
+    !Number.isFinite(qty)
+  ) {
+    return null;
   }
 
-  // stock fallback
-  return (leg.closePrice - leg.openPrice) * leg.qty * multiplier;
+  const multiplier =
+    type.includes("call") || type.includes("put") ? 100 : 1;
+
+  if (type.startsWith("sell_")) {
+    return (openPrice - closePrice) * qty * multiplier;
+  }
+
+  if (type.startsWith("buy_")) {
+    return (closePrice - openPrice) * qty * multiplier;
+  }
+
+  return (closePrice - openPrice) * qty * multiplier;
 }
 
 /* -------------------------------------------------------
@@ -122,18 +143,10 @@ export function computeCampaignSummary(campaign, legsForCampaign) {
   const isBuy  = (l) => l.type.startsWith("buy_");
 
   // ⭐ Realized P/L only
-  const realizedPL = legsForCampaign
-    .filter(l => l.closePrice != null)
-    .reduce((sum, l) => {
-      const mult = multiplierFor(l);
-      if (isSell(l)) {
-        return sum + (l.openPrice - l.closePrice) * l.qty * mult;
-      }
-      if (isBuy(l)) {
-        return sum + (l.closePrice - l.openPrice) * l.qty * mult;
-      }
-      return sum + (l.closePrice - l.openPrice) * l.qty * mult;
-    }, 0);
+  const realizedPL = legsForCampaign.reduce(
+    (sum, leg) => sum + (computeLegPL(leg) ?? 0),
+    0
+  );
 
   // ⭐ Unrealized P/L = 0 (hidden)
   const unrealizedPL = 0;
@@ -544,13 +557,21 @@ export function computeWeeklyCashFlowSeries(dailySeries = []) {
     }));
 }
 
+function getMarginRatio(leg) {
+  const ticker = String(leg.ticker ?? "").trim().toUpperCase();
+  return MARGIN_RATIO_BY_TICKER.get(ticker) ?? DEFAULT_MARGIN_RATIO;
+}
+
 function standaloneMargin(leg, quantity) {
   const { type, strike, openPrice } = leg;
+  const marginRatio = getMarginRatio(leg);
 
   if (!Number.isFinite(quantity) || quantity <= 0) return null;
 
   if (type === "sell_put" || type === "sell_call") {
-    return Number.isFinite(strike) ? 0.3 * strike * quantity * 100 : null;
+    return Number.isFinite(strike)
+      ? marginRatio * strike * quantity * 100
+      : null;
   }
 
   if (type === "buy_put" || type === "buy_call") {
@@ -558,7 +579,9 @@ function standaloneMargin(leg, quantity) {
   }
 
   if (type === "buy_stock" || type === "sell_stock") {
-    return Number.isFinite(openPrice) ? 0.3 * openPrice * quantity : null;
+    return Number.isFinite(openPrice)
+      ? marginRatio * openPrice * quantity
+      : null;
   }
 
   return null;

@@ -80,68 +80,50 @@ async function guardAgainstStaleRemoteWrite(uid, collectionName, localRecord) {
 ------------------------ */
 
 export async function initialSync(uid) {
-  const campaignsSnap = await getDocs(collection(db, "users", uid, "campaigns"));
-  const remoteCampaigns = campaignsSnap.docs.map(d =>
+  const [campaignsSnap, legsSnap] = await Promise.all([
+    getDocs(collection(db, "users", uid, "campaigns")),
+    getDocs(collection(db, "users", uid, "legs")),
+  ]);
+
+  const [localCampaigns, localLegs] = await Promise.all([
+    dbLocal.campaigns.toArray(),
+    dbLocal.legs.toArray(),
+  ]);
+
+  const remoteCampaigns = campaignsSnap.docs.map((d) =>
     normalizeCampaign({ id: d.id, ...d.data() })
   );
-
-  const legsSnap = await getDocs(collection(db, "users", uid, "legs"));
-  const remoteLegs = legsSnap.docs.map(d =>
+  const remoteLegs = legsSnap.docs.map((d) =>
     normalizeLeg({ id: d.id, ...d.data() })
   );
 
-  const localCampaigns = await dbLocal.campaigns.toArray();
-  const localLegs = await dbLocal.legs.toArray();
+  const dirtyCampaignIds = new Set(
+    localCampaigns.filter((campaign) => campaign.dirty).map((campaign) => campaign.id)
+  );
+  const dirtyLegIds = new Set(
+    localLegs.filter((leg) => leg.dirty).map((leg) => leg.id)
+  );
 
-  const dirtyCampaignIds = new Set(localCampaigns.filter(c => c.dirty).map(c => c.id));
-  const dirtyLegIds = new Set(localLegs.filter(l => l.dirty).map(l => l.id));
+  const campaignsToPut = remoteCampaigns.filter(
+    (campaign) => !dirtyCampaignIds.has(campaign.id)
+  );
+  const legsToPut = remoteLegs.filter(
+    (leg) => !dirtyLegIds.has(leg.id)
+  );
 
-  // If Dexie is empty, do a full remote load and STOP
-  if (localCampaigns.length === 0 && localLegs.length === 0) {
-    const remote = await pullAllFromFirestore(uid);
-    await dbLocal.campaigns.bulkPut(remote.campaigns);
-    await dbLocal.legs.bulkPut(remote.legs);
-    return;
-  }
-
-  // Otherwise: overwrite non-dirty rows
-  for (const rc of remoteCampaigns) {
-    if (!dirtyCampaignIds.has(rc.id)) {
-      await dbLocal.campaigns.put(rc);
+  await dbLocal.transaction(
+    "rw",
+    dbLocal.campaigns,
+    dbLocal.legs,
+    async () => {
+      if (campaignsToPut.length > 0) {
+        await dbLocal.campaigns.bulkPut(campaignsToPut);
+      }
+      if (legsToPut.length > 0) {
+        await dbLocal.legs.bulkPut(legsToPut);
+      }
     }
-  }
-
-  for (const rl of remoteLegs) {
-    if (!dirtyLegIds.has(rl.id)) {
-      await dbLocal.legs.put(rl);
-    }
-  }
-}
-
-export async function pullAllFromFirestore(uid) {
-  const campaignsRef = collection(db, "users", uid, "campaigns");
-  const legsRef = collection(db, "users", uid, "legs");
-
-  const [campaignsSnap, legsSnap] = await Promise.all([
-    getDocs(campaignsRef),
-    getDocs(legsRef)
-  ]);
-
-  const campaigns = campaignsSnap.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-    deleted: !!doc.data().deleted,
-    dirty: false,
-  }));
-
-  const legs = legsSnap.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-    deleted: !!doc.data().deleted,
-    dirty: false,
-  }));
-
-  return { campaigns, legs };
+  );
 }
 
 /* -----------------------
@@ -154,29 +136,39 @@ export function subscribeToCampaigns(uid) {
   return onSnapshot(
     qCampaigns,
     async (snap) => {
-      // Process only what changed, avoiding full collection rewrites
-      for (const change of snap.docChanges()) {
-        const id = change.doc.id;
-        const localRecord = await dbLocal.campaigns.get(id);
+      const changes = snap.docChanges();
+      if (changes.length === 0) return;
 
-        // The Golden Rule: Never overwrite a local dirty record
-        if (localRecord && localRecord.dirty) continue;
+      await dbLocal.transaction("rw", dbLocal.campaigns, async () => {
+        const ids = changes.map((change) => change.doc.id);
+        const localRecords = await dbLocal.campaigns.bulkGet(ids);
+        const recordsToPut = [];
+        const idsToDelete = [];
 
-        if (change.type === "added" || change.type === "modified") {
-          const raw = change.doc.data();
-          const data = normalizeCampaign({
-            ...raw,
-            id,
-            dirty: false,
-            updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
-            serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
-            clientUpdatedAt: toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
-          });
-          await dbLocal.campaigns.put(data);
-        } else if (change.type === "removed") {
-          await dbLocal.campaigns.delete(id);
+        changes.forEach((change, index) => {
+          const id = change.doc.id;
+          if (localRecords[index]?.dirty) return;
+
+          if (change.type === "added" || change.type === "modified") {
+            recordsToPut.push(
+              normalizeCampaign({
+                ...change.doc.data(),
+                id,
+                dirty: false,
+              })
+            );
+          } else if (change.type === "removed") {
+            idsToDelete.push(id);
+          }
+        });
+
+        if (recordsToPut.length > 0) {
+          await dbLocal.campaigns.bulkPut(recordsToPut);
         }
-      }
+        if (idsToDelete.length > 0) {
+          await dbLocal.campaigns.bulkDelete(idsToDelete);
+        }
+      });
     },
     (err) => {
       console.error("[subscribeToCampaigns] listener error", err);
