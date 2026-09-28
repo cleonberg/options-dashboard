@@ -390,16 +390,6 @@ button.secondary:hover {
   white-space: nowrap;
 }
 
-.leg-ratio-badge {
-  display: inline-block;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #111f3f;
-  color: #a0aec0;
-  border: 1px solid #24345f;
-}
-
 .progress-container {
   display: flex;
   align-items: center;
@@ -1027,4 +1017,59 @@ button.secondary:hover {
   .clear-filter {
     width: 100%;
   }
+}
+
+
+.campaign-duration {
+  min-width: 110px;
+  max-width: 110px;
+}
+
+.campaign-duration-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.campaign-leg-count {
+  color: #9fb3ff;
+}
+
+.campaign-duration-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.campaign-duration-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #38bdf8;
+}
+
+.campaign-table {
+  table-layout: fixed;
+}
+
+.campaign-table .campaign-duration {
+  min-width: 0;
+}
+
+.campaign-table .campaign-duration-labels {
+  gap: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.campaign-table th.numeric-column,
+.campaign-table td.numeric-column {
+  text-align: right;
+}
+
+.campaign-table-open .progress-container {
+  max-width: none;
 }

@@ -3,10 +3,8 @@ import {
   fmtWholeDollars,
   cashClass, 
   computeCampaignSummary, 
-  detectStrategy,
   getCampaignDuration 
 } from "../logic/logic.js";
-import DurationProgressBar from "./DurationProgressBar.jsx"; // <-- Import here
 
 export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
   const [sortConfig, setSortConfig] = useState({ field: "endDate", direction: "desc" });
@@ -41,6 +39,8 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
       const legsForCampaign = campaignLegsMap.get(campaignId) || [];
       const summary = computeCampaignSummary(campaign, legsForCampaign);
       const parsedEndDate = new Date(campaign.endDate || 0).getTime();
+      const durationDays = getCampaignDuration(legsForCampaign);
+      const legCount = legsForCampaign.length;
 
       const tooltipText = legsForCampaign.length > 0
         ? `Campaign Legs (${legsForCampaign.length}):\n` +
@@ -54,8 +54,8 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
 
       map.set(campaignId, {
         summary,
-        strategy: detectStrategy(legsForCampaign),
-        durationDays: getCampaignDuration(legsForCampaign),
+        durationDays,
+        legCount,
         endDateTime: Number.isFinite(parsedEndDate) ? parsedEndDate : 0,
         tooltipText
       });
@@ -63,6 +63,14 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
 
     return map;
   }, [campaigns, campaignLegsMap]);
+
+  const maxDurationDays = Math.max(
+    1,
+    ...campaigns.map(
+      (campaign) =>
+        campaignMetricsMap.get(String(campaign.id))?.durationDays ?? 0
+    )
+  );
 
   const sortedCampaigns = useMemo(() => {
     const direction = sortConfig.direction === "asc" ? 1 : -1;
@@ -100,24 +108,28 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
 
   return (
     <div className="table-container">
-      <table className="summary-table">
+      <table className="summary-table campaign-table">
+        <colgroup>
+          <col style={{ width: "24%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "31%" }} />
+          <col style={{ width: "31%" }} />
+        </colgroup>
         <thead>
           <tr>
             <th onClick={() => handleSort("ticker")} style={{ cursor: "pointer", userSelect: "none" }}>
               Ticker & Strategy{getSortIndicator("ticker")}
             </th>
-            {/* Hidden on small screens */}
             <th 
-              className="hide-mobile" 
               onClick={() => handleSort("duration")} 
               style={{ cursor: "pointer", userSelect: "none" }}
             >
-              Duration{getSortIndicator("duration")}
+              Duration / Legs{getSortIndicator("duration")}
             </th>
-            <th onClick={() => handleSort("endDate")} style={{ cursor: "pointer", userSelect: "none" }}>
+            <th onClick={() => handleSort("endDate")} className="numeric-column" style={{ cursor: "pointer", userSelect: "none" }}>
               Closed{getSortIndicator("endDate")}
             </th>
-            <th onClick={() => handleSort("totalPL")} style={{ cursor: "pointer", userSelect: "none" }}>
+            <th onClick={() => handleSort("totalPL")} className="numeric-column" style={{ cursor: "pointer", userSelect: "none" }}>
               Total P/L{getSortIndicator("totalPL")}
             </th>
           </tr>
@@ -126,9 +138,14 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
           {sortedCampaigns.map(c => {
             const metrics = campaignMetricsMap.get(String(c.id));
             const summary = metrics?.summary;
-            const strategy = metrics?.strategy;
             const durationDays = metrics?.durationDays ?? 0;
-
+            const legsForCampaign = metrics?.legsForCampaign || [];
+            const legCount = legsForCampaign.length;
+            const durationPercent = Math.max(
+              5,
+              (durationDays / maxDurationDays) * 100
+            );
+            
             return (
               <tr
                 key={c.id}
@@ -139,17 +156,28 @@ export default function ClosedCampaignTable({ campaigns, legs, onSelect }) {
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <span style={{ fontWeight: "bold" }}>{c.name}</span>
-                    <span className="strategy-badge">{strategy}</span>
                   </div>
                 </td>
                 
-                {/* Render the Duration Progress Bar here */}
-                <td className="hide-mobile">
-                  <DurationProgressBar durationDays={durationDays} />
+                <td>
+                  <div className="campaign-duration">
+                    <div className="campaign-duration-labels">
+                      <span>{durationDays}d</span>
+                      <span className="campaign-leg-count">
+                        {legCount} {legCount === 1 ? "leg" : "legs"}
+                      </span>
+                    </div>
+                    <div className="campaign-duration-track">
+                      <div
+                        className="campaign-duration-fill"
+                        style={{ width: `${durationPercent}%` }}
+                      />
+                    </div>
+                  </div>
                 </td>
 
-                <td>{c.endDate || "-"}</td>
-                <td className={cashClass(summary.totalPL)}>
+                <td className="numeric-column">{c.endDate || "-"}</td>
+                <td className={`numeric-column ${cashClass(summary.totalPL)}` }>
                   {fmtWholeDollars(summary.totalPL)}
                 </td>
               </tr>

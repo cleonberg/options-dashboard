@@ -5,12 +5,9 @@ import {
   computeCampaignSummary,
   computeMarginEstimate,
   fmtCampaignDaysLeft,
-  detectStrategy,
   getCampaignDuration
 } from "../logic/logic.js";
 import DaysLeftProgressBar from "./DaysLeftProgressBar.jsx";
-import DurationProgressBar from "./DurationProgressBar.jsx";
-import LegRatioBadge from "./LegRatioBadge.jsx";
 
 function toSortableNumber(value, fallback = Number.POSITIVE_INFINITY) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -58,7 +55,6 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
 
       const summary = computeCampaignSummary(campaign, legsForCampaign);
       const daysLeft = fmtCampaignDaysLeft(campaign, legsForCampaign);
-      const strategy = detectStrategy(legsForCampaign);
       const durationDays = getCampaignDuration(legsForCampaign);
 
       const tooltipText =
@@ -88,7 +84,6 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
         legsForCampaign,
         summary,
         daysLeft,
-        strategy,
         durationDays,
         tooltipText
       });
@@ -96,6 +91,14 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
 
     return map;
   }, [campaigns, campaignLegsMap, legs]);
+
+  const maxDurationDays = Math.max(
+    1,
+    ...campaigns.map(
+      (campaign) =>
+        campaignMetricsMap.get(String(campaign.id))?.durationDays ?? 0
+    )
+  );
 
   const sortedCampaigns = useMemo(() => {
     const directionMult = sortConfig.direction === "asc" ? 1 : -1;
@@ -150,7 +153,14 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
   return (
     <div className="open-campaigns-container">
       <div className="table-container">
-        <table className="summary-table">
+        <table className="summary-table campaign-table campaign-table-open">
+          <colgroup>
+            <col style={{ width: "24%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "20.67%" }} />
+            <col style={{ width: "20.67%" }} />
+            <col style={{ width: "20.66%" }} />
+          </colgroup>
           <thead>
             <tr>
               <th
@@ -159,12 +169,11 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               >
                 Campaign{getSortIndicator("name")}
               </th>
-              {/* <th className="hide-mobile">Legs Ratio</th> */}
               <th
                 onClick={() => handleSort("duration")}
                 style={{ cursor: "pointer", userSelect: "none" }}
               >
-                Duration{getSortIndicator("duration")}
+                Duration / Legs{getSortIndicator("duration")}
               </th>
               <th
                 onClick={() => handleSort("daysLeft")}
@@ -175,10 +184,11 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               <th
                 onClick={() => handleSort("netCredit")}
                 style={{ cursor: "pointer", userSelect: "none" }}
+                className="numeric-column"
               >
                 Max Credit{getSortIndicator("netCredit")}
               </th>
-              <th>Est. Margin</th>
+              <th className="numeric-column">Est. Margin</th>
             </tr>
           </thead>
           <tbody>
@@ -187,8 +197,12 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
               const legsForCampaign = metrics?.legsForCampaign || [];
               const summary = metrics?.summary || { netCredit: 0 };
               const daysLeft = metrics?.daysLeft ?? null;
-              const strategy = metrics?.strategy || detectStrategy(legsForCampaign);
               const durationDays = metrics?.durationDays ?? 0;
+              const legCount = legsForCampaign.length;
+              const durationPercent = Math.max(
+                5,
+                (durationDays / maxDurationDays) * 100
+              );
               const tooltipText = metrics?.tooltipText || "No legs in this campaign";
               const estimatedMargin = marginByCampaign[String(c.id)] ?? 0;
 
@@ -208,27 +222,35 @@ export default function OpenCampaignTable({ campaigns, legs, onSelect }) {
                       }}
                     >
                       <span style={{ fontWeight: "bold" }}>{c.name}</span>
-                      <span className="strategy-badge">{strategy}</span>
                     </div>
                   </td>
 
-                  {/* <td className="hide-mobile">
-                    <LegRatioBadge legs={legsForCampaign} />
-                  </td> */}
-
                   <td>
-                    <DurationProgressBar durationDays={durationDays} />
+                    <div className="campaign-duration">
+                      <div className="campaign-duration-labels">
+                        <span>{durationDays}d</span>
+                        <span className="campaign-leg-count">
+                          {legCount} {legCount === 1 ? "leg" : "legs"}
+                        </span>
+                      </div>
+                      <div className="campaign-duration-track">
+                        <div
+                          className="campaign-duration-fill"
+                          style={{ width: `${durationPercent}%` }}
+                        />
+                      </div>
+                    </div>
                   </td>
 
                   <td>
                     <DaysLeftProgressBar daysLeft={daysLeft} />
                   </td>
 
-                  <td className={cashClass(summary.netCredit)}>
+                  <td className={`numeric-column ${cashClass(summary.netCredit)}`}>
                     {fmtWholeDollars(summary.netCredit)}
                   </td>
 
-                  <td>{fmtWholeDollars(estimatedMargin)}</td>
+                  <td className="numeric-column">{fmtWholeDollars(estimatedMargin)}</td>
                 </tr>
               );
             })}
