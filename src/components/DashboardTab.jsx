@@ -412,7 +412,7 @@ export default function DashboardTab({
     <div className="dashboard-tab">
 
       {/* Filters */}
-      <div className="card">
+      <div className="card filter-card">
         <FilterBar
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
@@ -427,8 +427,8 @@ export default function DashboardTab({
       <div style={{ marginBottom: "24px" }}>
         <div className="summary-grid-cards">
           <div className="summary-card">
-            <h3 style={{ color: "#9fb3ff", margin: 0 }}>Campaign P&amp;L</h3>
-            <div className="summary-card-metrics">
+            <h3 className="summary-card-title">Campaign P&amp;L</h3>
+            <div className="summary-card-metrics summary-card-metrics--three">
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Realized P&amp;L</div>
                 <div className={`summary-metric-val ${cashClass(displaySummary.netPL)}`}>
@@ -453,8 +453,8 @@ export default function DashboardTab({
           </div>
 
           <div className="summary-card">
-            <h3 style={{ color: "#9fb3ff", margin: 0 }}>Capital Efficiency</h3>
-            <div className="summary-card-metrics">
+            <h3 className="summary-card-title">Capital Efficiency</h3>
+            <div className="summary-card-metrics summary-card-metrics--three">
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Total Margin</div>
                 <div className="summary-metric-val">
@@ -472,7 +472,7 @@ export default function DashboardTab({
               </div>
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
-                <div className="summary-metric-label">This Week's Cash Flow</div>
+                <div className="summary-metric-label">This Week</div>
                 <div className={`summary-metric-val ${cashClass(currentWeekPremium)}`}>
                   {fmtWholeDollars(currentWeekPremium)}
                 </div>
@@ -553,7 +553,7 @@ export default function DashboardTab({
 
       {activeChart === "cashflow" ? (
         <div className="cash-flow-charts-grid">
-          <WeeklyCashFlowChart
+          <CombinedCashFlowChart
             legs={searchFilteredLegs}
             campaigns={searchFilteredCampaigns}
             dailySeries={dashboardDailyCashFlowSeries}
@@ -561,8 +561,7 @@ export default function DashboardTab({
             startDateFilter={startDateFilter}
             endDateFilter={endDateFilter}
           />
-
-          <CombinedCashFlowChart
+          <WeeklyCashFlowChart
             legs={searchFilteredLegs}
             campaigns={searchFilteredCampaigns}
             dailySeries={dashboardDailyCashFlowSeries}
@@ -689,11 +688,9 @@ export default function DashboardTab({
         </div>
 
         <div className="summary-card">
-          <h3 style={{ color: "#9fb3ff", margin: 0 }}>
-            Active Campaigns
-          </h3>
+          <h3 className="summary-card-title">Active Campaigns</h3>
 
-          <div className="summary-card-metrics">
+          <div className="summary-card-metrics summary-card-metrics--two">
             <div className="summary-metric-item">
               <div className="summary-metric-label">
                 Open Campaigns
@@ -727,11 +724,11 @@ export default function DashboardTab({
       {/* Closed Campaigns */}
       <section>
         <div className="summary-card">
-          <h3 style={{ color: "#9fb3ff", margin: 0 }}>
+          <h3 className="summary-card-title">
             Closed Campaigns
           </h3>
 
-          <div className="summary-card-metrics">
+          <div className="summary-card-metrics summary-card-metrics--two">
             <div className="summary-metric-item">
               <div className="summary-metric-label">
                 Closed Campaigns

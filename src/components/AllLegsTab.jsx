@@ -2,7 +2,11 @@
 import React, { useState, useMemo } from "react";
 import LegTable from "./LegTable.jsx";
 import FilterBar from "./FilterBar.jsx";
-import { computeLegPL } from "../logic/logic.js";
+import {
+  computeLegPL,
+  fmtWholeDollars,
+  cashClass
+} from "../logic/logic.js";
 
 export default function AllLegsTab({
   campaigns = [], // ⭐ NEW: Accept campaigns from App.jsx
@@ -75,8 +79,15 @@ export default function AllLegsTab({
   const totalFiltered = filteredLegs.length;
   const totalOpen = filteredLegs.filter(l => l.isOpen).length;
   const totalClosed = filteredLegs.filter(l => !l.isOpen).length;
+  const realizedResults = filteredLegs
+    .filter((leg) => !leg.isOpen)
+    .map((leg) => computeLegPL(leg))
+    .filter((pl) => Number.isFinite(pl));
 
-  // Sort the filtered legs before passing them to the table
+  const realizedPL = realizedResults.reduce((sum, pl) => sum + pl, 0);
+  const winningLegs = realizedResults.filter((pl) => pl > 0).length;
+  const losingLegs = realizedResults.filter((pl) => pl < 0).length;  // Sort the filtered legs before passing them to the table
+
   const sortedLegs = [...filteredLegs].sort((a, b) => {
     // Helper for safe string comparison (ignores capitalization)
     const safeString = (val) => (val || "").toString().toLowerCase();
@@ -142,7 +153,7 @@ export default function AllLegsTab({
   return (
     <>
       {/* Filter Card */}
-      <div className="card">
+      <div className="card filter-card">
         <FilterBar
           searchTerm={query}
           setSearchTerm={setQuery}
@@ -156,37 +167,48 @@ export default function AllLegsTab({
       {/* Summary Card */}
       <div className="summary-grid-cards">
         <div className="summary-card">
-          <div className="summary-card-metrics">
+          <h3 className="summary-card-title">Leg Activity</h3>
+          <div className="summary-card-metrics summary-card-metrics--three">
             <div className="summary-metric-item">
-              <div className="summary-metric-label">Total Legs</div>
-              <div className="summary-metric-val">{legs.length}</div>
-            </div>
-      
-            <div className="summary-card-divider" />
-      
-            <div className="summary-metric-item">
-              <div className="summary-metric-label">Filtered</div>
+              <div className="summary-metric-label">Filtered Legs</div>
               <div className="summary-metric-val">{totalFiltered}</div>
             </div>
-          </div>
-        </div>
-      
-        <div className="summary-card">
-          <div className="summary-card-metrics">
+            <div className="summary-card-divider" />
             <div className="summary-metric-item">
               <div className="summary-metric-label">Open</div>
               <div className="summary-metric-val">{totalOpen}</div>
             </div>
-      
             <div className="summary-card-divider" />
-      
             <div className="summary-metric-item">
               <div className="summary-metric-label">Closed</div>
               <div className="summary-metric-val">{totalClosed}</div>
             </div>
           </div>
         </div>
-      </div>
+      
+        <div className="summary-card">
+          <h3 className="summary-card-title">Realized Results</h3>
+          <div className="summary-card-metrics summary-card-metrics--three">
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Realized P/L</div>
+              <div className={`summary-metric-val ${cashClass(realizedPL)}`}>
+                {fmtWholeDollars(realizedPL)}
+              </div>
+            </div>
+            <div className="summary-card-divider" />
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Winning Legs</div>
+              <div className="summary-metric-val">{winningLegs}</div>
+            </div>
+            <div className="summary-card-divider" />
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Losing Legs</div>
+              <div className="summary-metric-val">{losingLegs}</div>
+            </div>
+          </div>
+        </div>
+      </div>    
+
       {/* Table Card */}
       <div className="card">
         <LegTable

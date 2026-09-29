@@ -178,34 +178,31 @@ export default function CampaignsTab(props) {
 
       {/* --- 3-CARD SUMMARY METRICS --- */}
       <div className="summary-grid-cards">
-        {/* Card 1: Total P/L */}
         <div className="summary-card">
-          <div className="summary-card-title">Total P/L</div>
-          <div className={`${cashClass(summary.totalPL)} summary-card-value`} style={{ fontSize: "24px" }}>
-            {fmtWholeDollars(summary.totalPL)}
-          </div>
-        </div>
-
-        {/* Card 2: Net Credit/Debit */}
-        <div className="summary-card">
-          <div className="summary-card-title">Net Credit</div>
-          <div className={`${cashClass(summary.netCredit)} summary-card-value`}>
-            {fmtWholeDollars(summary.netCredit)}
-          </div>
-        </div>
-
-        {/* Card 3: Leg Status */}
-        <div className="summary-card">
-          <div className="summary-card-title">Legs Summary</div>
-          <div className="summary-card-metrics">
+          <h3 className="summary-card-title">Campaign Summary</h3>
+      
+          <div className="summary-card-metrics summary-card-metrics--three">
             <div className="summary-metric-item">
-              <div className="summary-metric-label">Open</div>
-              <div className="summary-metric-val">{openLegsCount}</div>
+              <div className="summary-metric-label">Total P/L</div>
+              <div className={`summary-metric-val ${cashClass(summary.totalPL)}`}>
+                {fmtWholeDollars(summary.totalPL)}
+              </div>
             </div>
+      
             <div className="summary-card-divider" />
+      
             <div className="summary-metric-item">
-              <div className="summary-metric-label">Closed</div>
-              <div className="summary-metric-val">{closedLegsCount}</div>
+              <div className="summary-metric-label">Net Credit</div>
+              <div className={`summary-metric-val ${cashClass(summary.netCredit)}`}>
+                {fmtWholeDollars(summary.netCredit)}
+              </div>
+            </div>
+      
+            <div className="summary-card-divider" />
+      
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Legs</div>
+              <div className="summary-metric-val">{summary.legCount}</div>
             </div>
           </div>
         </div>

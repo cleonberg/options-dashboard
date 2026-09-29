@@ -1,6 +1,15 @@
-// src/components/FilterBar.jsx
-
 import React, { useState } from "react";
+
+const DATE_PRESETS = [
+    ["ytd", "YTD"],
+    ["365d", "365d"],
+    ["90d", "90d"],
+    ["30d", "30d"],
+    ["7d", "7d"],
+    ["all", "All"]
+];
+
+const PRESET_LABELS = Object.fromEntries(DATE_PRESETS);
 
 export default function FilterBar({
     searchTerm = "",
@@ -12,50 +21,36 @@ export default function FilterBar({
 }) {
     const [showDateFilters, setShowDateFilters] = useState(false);
     const [activeDatePreset, setActiveDatePreset] = useState(
-    startDateFilter || endDateFilter ? "custom" : "all"
+        startDateFilter || endDateFilter ? "custom" : "all"
     );
 
-    const toISODateStr = (d) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
+    const toISODateStr = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
 
         return `${year}-${month}-${day}`;
     };
 
     const handleQuickFilter = (preset) => {
-        const now = new Date();
-
+        const today = new Date();
         let start = "";
-        let end = toISODateStr(now);
+        let end = "";
 
-        if (preset === "thisWeek") {
-        start = toISODateStr(
-            new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate() - now.getDay()
-            )
-        );
-        } else if (preset === "last30") {
-        start = toISODateStr(
-            new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate() - 30
-            )
-        );
-        } else if (preset === "thisMonth") {
-        start = toISODateStr(
-            new Date(now.getFullYear(), now.getMonth(), 1)
-        );
-        } else if (preset === "ytd") {
-        start = toISODateStr(
-            new Date(now.getFullYear(), 0, 1)
-        );
-        } else if (preset === "all") {
-        start = "";
-        end = "";
+        if (preset === "ytd") {
+            start = toISODateStr(new Date(today.getFullYear(), 0, 1));
+            end = toISODateStr(today);
+        } else if (preset !== "all") {
+            const days = Number.parseInt(preset, 10);
+            const firstDay = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate()
+            );
+            firstDay.setDate(firstDay.getDate() - days + 1);
+
+            start = toISODateStr(firstDay);
+            end = toISODateStr(today);
         }
 
         setActiveDatePreset(preset);
@@ -75,150 +70,135 @@ export default function FilterBar({
         Boolean(startDateFilter) ||
         Boolean(endDateFilter);
 
+    const activeLabel =
+        activeDatePreset === "custom"
+            ? "Custom"
+            : PRESET_LABELS[activeDatePreset];
+
     return (
         <div className="filter-bar">
+            <div className="filter-primary-row">
+                <div className="filter-search">
+                    <input
+                        type="text"
+                        className="input"
+                        placeholder="Ticker or symbol..."
+                        value={searchTerm}
+                        onChange={(event) =>
+                            setSearchTerm?.(event.target.value)
+                        }
+                        aria-label="Filter by ticker or symbol"
+                    />
+                </div>
 
-            {/* Search */}
-            <div className="filter-search">
-                <input
-                type="text"
-                className="input"
-                placeholder="Filter ticker or symbol..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm?.(e.target.value)}
-                />
+                {hasActiveFilters && (
+                    <button
+                        type="button"
+                        className="secondary clear-filter"
+                        onClick={handleClearFilters}
+                        aria-label="Clear all filters"
+                        title="Clear all filters"
+                    >
+                        Clear
+                    </button>
+                )}
             </div>
 
-            {/* Date Range */}
-            <div className="date-filter-dropdown">
-
-                <button
-                type="button"
-                className="date-filter-toggle"
-                onClick={() =>
-                    setShowDateFilters((prev) => !prev)
-                }
-                >
-                <span>
-                    Date Range
-
-                    {activeDatePreset !== "all" && (
-                    <span className="date-filter-current">
-                        {" · "}
-                        {
-                        {
-                            thisWeek: "This Week",
-                            last30: "Last 30 Days",
-                            thisMonth: "This Month",
-                            ytd: "YTD",
-                            custom: "Custom"
-                        }[activeDatePreset]
-                        }
-                    </span>
-                    )}
-                </span>
-
-                <span className="date-filter-chevron">
-                    {showDateFilters ? "▲" : "▼"}
-                </span>
-                </button>
-
-                {showDateFilters && (
-                <div className="date-filter-content">
-
-                    <div className="filter-section">
-                    <div className="filter-section-label">
-                        Quick Range
-                    </div>
-
-                    <div className="quick-filters">
-                        {[
-                        ["thisWeek", "This Week"],
-                        ["last30", "Last 30 Days"],
-                        ["thisMonth", "This Month"],
-                        ["ytd", "YTD"],
-                        ["all", "All Time"]
-                        ].map(([value, label]) => (
+            <div className="filter-date-row">
+                <div className="quick-filters" aria-label="Date presets">
+                    {DATE_PRESETS.map(([value, label]) => (
                         <button
                             key={value}
                             type="button"
                             className={`secondary quick-filter ${
-                            activeDatePreset === value
-                                ? "selected"
-                                : ""
+                                activeDatePreset === value ? "selected" : ""
                             }`}
-                            onClick={() =>
-                            handleQuickFilter(value)
-                            }
+                            onClick={() => handleQuickFilter(value)}
+                            aria-pressed={activeDatePreset === value}
                         >
                             {label}
                         </button>
-                        ))}
-                    </div>
-                    </div>
-
-                    <div className="filter-section">
-                    <div className="filter-section-label">
-                        Custom Date Range
-                    </div>
-
-                    <div className="custom-date-range">
-
-                        <div className="date-field">
-                        <label>From</label>
-
-                        <input
-                            type="date"
-                            className="input"
-                            value={startDateFilter}
-                            onChange={(e) => {
-                            setActiveDatePreset("custom");
-                            setStartDateFilter?.(
-                                e.target.value
-                            );
-                            }}
-                        />
-                        </div>
-
-                        <span className="date-arrow">
-                        →
-                        </span>
-
-                        <div className="date-field">
-                        <label>To</label>
-
-                        <input
-                            type="date"
-                            className="input"
-                            value={endDateFilter}
-                            onChange={(e) => {
-                            setActiveDatePreset("custom");
-                            setEndDateFilter?.(
-                                e.target.value
-                            );
-                            }}
-                        />
-                        </div>
-
-                    </div>
-                    </div>
-
+                    ))}
                 </div>
-                )}
 
+                <div className="date-filter-dropdown">
+                    <button
+                        type="button"
+                        className="date-filter-toggle"
+                        onClick={() =>
+                            setShowDateFilters((visible) => !visible)
+                        }
+                        aria-expanded={showDateFilters}
+                        aria-controls="filter-date-content"
+                    >
+                        <span className="date-filter-toggle-label">
+                            Dates
+                            {activeDatePreset !== "all" && (
+                                <span className="date-filter-current">
+                                    {" · "}
+                                    {activeLabel}
+                                </span>
+                            )}
+                        </span>
+                        <span
+                            className="date-filter-chevron"
+                            aria-hidden="true"
+                        >
+                            {showDateFilters ? "▲" : "▼"}
+                        </span>
+                    </button>
+
+                    {showDateFilters && (
+                        <div
+                            className="date-filter-content"
+                            id="filter-date-content"
+                        >
+                            <div className="filter-section-label">
+                                Custom Date Range
+                            </div>
+
+                            <div className="custom-date-range">
+                                <label className="date-field">
+                                    <span>From</span>
+                                    <input
+                                        type="date"
+                                        className="input"
+                                        value={startDateFilter}
+                                        onChange={(event) => {
+                                            setActiveDatePreset("custom");
+                                            setStartDateFilter?.(
+                                                event.target.value
+                                            );
+                                        }}
+                                    />
+                                </label>
+
+                                <span
+                                    className="date-arrow"
+                                    aria-hidden="true"
+                                >
+                                    →
+                                </span>
+
+                                <label className="date-field">
+                                    <span>To</span>
+                                    <input
+                                        type="date"
+                                        className="input"
+                                        value={endDateFilter}
+                                        onChange={(event) => {
+                                            setActiveDatePreset("custom");
+                                            setEndDateFilter?.(
+                                                event.target.value
+                                            );
+                                        }}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
-
-            {/* Clear */}
-            {hasActiveFilters && (
-                <button
-                type="button"
-                className="secondary clear-filter"
-                onClick={handleClearFilters}
-                >
-                Clear Filters
-                </button>
-            )}
-
         </div>
     );
 }
