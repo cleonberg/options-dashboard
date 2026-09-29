@@ -1070,6 +1070,6 @@ button.secondary:hover {
   text-align: right;
 }
 
-.campaign-table-open .progress-container {
+.campaign-table .progress-container {
   max-width: none;
 }

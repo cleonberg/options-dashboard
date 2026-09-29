@@ -5,7 +5,12 @@ import {
   fmtWholeDollars,
   cashClass,
   computeLegPL,
-  computeDailyCashFlowSeries
+  computeDailyCashFlowSeries,
+  computeMarginHistorySeries,
+  computeCampaignProjectedPL,
+  computeMarginEstimate,
+  computeAROM,
+  getCampaignDuration
 } from "../logic/logic.js";
 
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
@@ -163,6 +168,24 @@ export default function DashboardTab({
     [filteredCampaigns]
   );
 
+  const peakMarginByCampaign = useMemo(() => {
+    const peaks = new Map();
+
+    for (const day of computeMarginHistorySeries(legs)) {
+      for (const [campaignId, margin] of Object.entries(day.byCampaign)) {
+        const value = Number(margin);
+        if (!Number.isFinite(value)) continue;
+
+        peaks.set(
+          String(campaignId),
+          Math.max(peaks.get(String(campaignId)) ?? 0, value)
+        );
+      }
+    }
+
+    return peaks;
+  }, [legs]);
+
   // Legs used for transaction-level metrics. Search applies, campaign
   // startDate does not.
   const searchFilteredLegs = useMemo(() => {
@@ -218,6 +241,64 @@ export default function DashboardTab({
       );
   }, [dashboardDailyCashFlowSeries, startDateFilter, endDateFilter]);
 
+  const topMetrics = useMemo(() => {
+    const openCampaignIds = new Set(
+      open.map((campaign) => normalizeId(campaign.id))
+    );
+  
+    const openLegs = legs.filter(
+      (leg) => leg.isOpen && openCampaignIds.has(normalizeId(leg.campaignId))
+    );
+  
+    const totalMargin = computeMarginEstimate(openLegs).total;
+    const unrealizedPL = computeCampaignProjectedPL(openLegs);
+  
+    let weightedAromTotal = 0;
+    let aromMarginTotal = 0;
+  
+    for (const campaign of open) {
+      const campaignId = String(campaign.id);
+      const campaignLegs = legsByCampaign.get(normalizeId(campaign.id)) || [];
+      const margin = peakMarginByCampaign.get(campaignId) ?? 0;
+      const projectedPL = computeCampaignProjectedPL(campaignLegs, campaign);
+      const durationDays = getCampaignDuration(campaignLegs);
+      const arom = computeAROM(projectedPL, margin, durationDays);
+  
+      if (arom != null && margin > 0) {
+        weightedAromTotal += arom * margin;
+        aromMarginTotal += margin;
+      }
+    }
+  
+    const yearStart = `${new Date().getFullYear()}-01-01`;
+    const today = toISODateStr(new Date());
+  
+    const realizedPLYTD = searchFilteredLegs.reduce((total, leg) => {
+      if (leg.isOpen) return total;
+  
+      const closeDate = getDateOnly(leg.closeDate);
+      if (!closeDate || closeDate < yearStart || closeDate > today) {
+        return total;
+      }
+  
+      return total + (computeLegPL(leg) ?? 0);
+    }, 0);
+  
+    return {
+      totalMargin,
+      unrealizedPL,
+      weightedArom:
+        aromMarginTotal > 0 ? weightedAromTotal / aromMarginTotal : null,
+      realizedPLYTD
+    };
+  }, [
+    open,
+    legs,
+    legsByCampaign,
+    peakMarginByCampaign,
+    searchFilteredLegs
+  ]);
+
   const displaySummary = useMemo(() => {
     const filteredCampaignIds = new Set(
       filteredCampaigns
@@ -246,6 +327,9 @@ export default function DashboardTab({
     open.length,
     closed.length
   ]);
+
+  const campaignPnlTotal =
+    displaySummary.netPL + topMetrics.unrealizedPL; 
 
   // Net Cash Flow / Week.
   const filteredCashFlowWeekly = useMemo(() => {
@@ -342,114 +426,54 @@ export default function DashboardTab({
       {/* Metrics */}
       <div style={{ marginBottom: "24px" }}>
         <div className="summary-grid-cards">
-
-          {/* Transaction Summary */}
           <div className="summary-card">
-            {/* <div className="summary-card-title">
-              Transaction Summary
-            </div> */}
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "16px",
-                marginTop: "0px"
-              }}
-            >
-              <div>
-                <div
-                  className="summary-metric-label"
-                  style={{ marginBottom: "4px" }}
-                >
-                  Realized Net P/L
-                </div>
-
-                <div
-                  className={`summary-metric-val ${cashClass(
-                    displaySummary.netPL
-                  )}`}
-                >
+            <h3 style={{ color: "#9fb3ff", margin: 0 }}>Campaign P&amp;L</h3>
+            <div className="summary-card-metrics">
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">Realized P&amp;L</div>
+                <div className={`summary-metric-val ${cashClass(displaySummary.netPL)}`}>
                   {fmtWholeDollars(displaySummary.netPL)}
                 </div>
-
-                {/* <div
-                  style={{
-                    fontSize: "10px",
-                    color: "#64748b",
-                    marginTop: "4px"
-                  }}
-                >
-                  Closed legs
-                </div> */}
               </div>
-
-              <div
-                style={{
-                  borderLeft: "1px solid #334155",
-                  paddingLeft: "16px"
-                }}
-              >
-                <div
-                  className="summary-metric-label"
-                  style={{ marginBottom: "4px" }}
-                >
-                  Net Cash Flow
+              <div className="summary-card-divider" />
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">Projected Open P&amp;L</div>
+                <div className={`summary-metric-val ${cashClass(topMetrics.unrealizedPL)}`}>
+                  {fmtWholeDollars(topMetrics.unrealizedPL)}
                 </div>
-
-                <div
-                  className={`summary-metric-val ${cashClass(
-                    displaySummary.netCashFlow
-                  )}`}
-                >
-                  {fmtWholeDollars(displaySummary.netCashFlow)}
+              </div>
+              <div className="summary-card-divider" />
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">Combined</div>
+                <div className={`summary-metric-val ${cashClass(campaignPnlTotal)}`}>
+                  {fmtWholeDollars(campaignPnlTotal)}
                 </div>
-
-                {/* <div
-                  style={{
-                    fontSize: "10px",
-                    color: "#64748b",
-                    marginTop: "4px"
-                  }}
-                >
-                  Selected date range
-                </div> */}
               </div>
             </div>
           </div>
 
-          {/* Weekly Cash Flow Metrics */}
           <div className="summary-card">
+            <h3 style={{ color: "#9fb3ff", margin: 0 }}>Capital Efficiency</h3>
             <div className="summary-card-metrics">
               <div className="summary-metric-item">
-                <div className="summary-metric-label">
-                  Net Cash Flow / Week
-                </div>
-
-                <div
-                  className={`summary-metric-val ${cashClass(
-                    filteredCashFlowWeekly.weekly
-                  )}`}
-                >
-                  {fmtWholeDollars(filteredCashFlowWeekly.weekly)}
+                <div className="summary-metric-label">Total Margin</div>
+                <div className="summary-metric-val">
+                  {fmtWholeDollars(topMetrics.totalMargin)}
                 </div>
               </div>
-
               <div className="summary-card-divider" />
-
               <div className="summary-metric-item">
-                <div
-                  className="summary-metric-label"
-                  style={{ color: "#10b981" }}
-                >
-                  This Week's Cash Flow
+                <div className="summary-metric-label">Weighted AROM</div>
+                <div className="summary-metric-val">
+                  {topMetrics.weightedArom == null
+                    ? "—"
+                    : `${topMetrics.weightedArom.toFixed(1)}%`}
                 </div>
-
-                <div
-                  className={`summary-metric-val ${cashClass(
-                    currentWeekPremium
-                  )}`}
-                >
+              </div>
+              <div className="summary-card-divider" />
+              <div className="summary-metric-item">
+                <div className="summary-metric-label">This Week's Cash Flow</div>
+                <div className={`summary-metric-val ${cashClass(currentWeekPremium)}`}>
                   {fmtWholeDollars(currentWeekPremium)}
                 </div>
               </div>
@@ -695,6 +719,7 @@ export default function DashboardTab({
         <OpenCampaignTable
           campaigns={open}
           legs={legs}
+          peakMarginByCampaign={peakMarginByCampaign}
           onSelect={onSelectCampaign}
         />
       </section>
@@ -732,6 +757,7 @@ export default function DashboardTab({
         <ClosedCampaignTable
           campaigns={closed}
           legs={legs}
+          peakMarginByCampaign={peakMarginByCampaign}
           onSelect={onSelectCampaign}
         />
       </section>

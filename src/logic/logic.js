@@ -476,6 +476,17 @@ export function getLegCashFlowEvents(leg, campaign = null) {
   return events;
 }
 
+export function computeCampaignProjectedPL(legs = [], campaign = null) {
+  return legs.reduce((campaignTotal, leg) => {
+    const legTotal = getLegCashFlowEvents(leg, campaign).reduce(
+      (total, event) => total + event.amount,
+      0
+    );
+
+    return campaignTotal + legTotal;
+  }, 0);
+}
+
 export function computeDailyCashFlowSeries(legs = [], campaigns = []) {
   const campaignMap = {};
   if (Array.isArray(campaigns)) {
@@ -859,4 +870,22 @@ export function computeMarginHistorySeries(
   }
 
   return output;
+}
+
+export function computeAROM(pl, margin, daysHeld) {
+  const profit = Number(pl);
+  const capital = Number(margin);
+  const days = Number(daysHeld);
+
+  if (
+    !Number.isFinite(profit) ||
+    !Number.isFinite(capital) ||
+    !Number.isFinite(days) ||
+    capital <= 0 ||
+    days <= 0
+  ) {
+    return null;
+  }
+
+  return (profit / capital) * (365 / days) * 100;
 }
