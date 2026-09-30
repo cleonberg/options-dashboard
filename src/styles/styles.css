@@ -96,38 +96,6 @@ h2, h3 {
   gap: 12px;
 }
 
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.online-dot {
-  width: 10px;
-  height: 10px;
-  background: var(--color-positive);
-  border-radius: 50%;
-}
-
-.user-email {
-  font-size: 14px;
-  opacity: 0.9;
-}
-
-.signout-btn {
-  background: var(--bg-btn-secondary);
-  border: 1px solid var(--border-btn);
-  padding: 6px 12px;
-  color: var(--text-main);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.signout-btn:hover {
-  background: var(--bg-hover-btn);
-}
-
 /* Tabs */
 
 .tabs {
@@ -163,13 +131,6 @@ h2, h3 {
   border: 1px solid var(--border-color);
   margin-bottom: 12px;
   color: var(--text-main);
-}
-
-.chart-container {
-  background: var(--bg-card);
-  border-radius: 8px;
-  padding: 8px;
-  margin-bottom: 12px;
 }
 
 .summary-grid-cards > .summary-card {
@@ -264,13 +225,6 @@ button.secondary:hover {
   background: var(--bg-hover-btn);
 }
 
-.sync-btn {
-  background: var(--primary);
-  padding: 4px 8px;
-  font-size: 12px;
-  border-radius: 4px;
-}
-
 /* Tables */
 
 .table {
@@ -300,11 +254,6 @@ button.secondary:hover {
 }
 
 /* Campaign Summary */
-
-.campaign-summary {
-  padding: 16px;
-}
-
 .summary-table {
   width: 100%;
   border-collapse: collapse;
@@ -330,35 +279,6 @@ button.secondary:hover {
 .summary-table tr:hover {
   background-color: #1b2b4f;
   cursor: pointer;
-}
-
-.closed-section {
-  margin-top: 20px;
-}
-
-.campaign-summary details summary {
-  cursor: pointer;
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: var(--text-subtle);
-}
-
-.deleted-campaigns-section {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  color: var(--text-main);
-  padding: 12px;
-  border-radius: 8px;
-  margin-top: 16px;
-}
-
-.deleted-campaigns-list > div {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  padding: 8px 12px;
-  border-radius: 6px;
-  color: var(--text-main);
-  margin-bottom: 8px;
 }
 
 /* Badges & Indicators */
@@ -617,11 +537,6 @@ button.secondary:hover {
   margin: 0;
 }
 
-.summary-card-value {
-  font-size: 20px;
-  font-weight: bold;
-}
-
 .summary-card-metrics {
   display: grid;
   gap: 10px;
@@ -669,17 +584,6 @@ button.secondary:hover {
 }
 
 @media (max-width: 600px) {
-  .summary-grid-cards {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-  }
-
-  .summary-grid-cards > .summary-card {
-    width: 100%;
-    min-width: 0;
-  }
-
   .summary-card-metrics--three {
     grid-template-columns:
       minmax(0, 1fr) 1px
@@ -698,51 +602,63 @@ button.secondary:hover {
 }
 
 /* Miscellaneous Helpers */
-
-.filters-row,
-.settings-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.filters-row .input {
-  flex: 1 1 140px;
-}
-
-.settings-row .input {
-  flex: 1 1 200px;
-}
-
 .settings-section-title {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 4px;
 }
 
+.settings-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-page > .card {
+  padding: 12px;
+}
+
+.settings-page > .card > h3:first-child {
+  margin: 0 0 12px;
+}
+
+.settings-option {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-option input[type="file"] {
+  height: 24px;
+  min-height: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 22px;
+}
+
+.settings-option input[type="file"]::file-selector-button {
+  height: 22px;
+  margin-right: 6px;
+  padding: 0 6px;
+  font: inherit;
+}
+
+
 .small {
   font-size: 11px;
   color: var(--text-muted);
 }
 
-.cash-positive {
+.cash-pos {
   color: var(--color-positive);
   font-weight: 600;
 }
 
-.cash-negative {
+.cash-neg {
   color: var(--color-negative);
   font-weight: 600;
-}
-
-.dirty-count {
-  color: var(--text-main);
-  font-weight: 600;
-}
-
-.last-sync {
-  opacity: 0.7;
 }
 
 .button-group {
@@ -796,6 +712,17 @@ button.secondary:hover {
   .user-name {
     display: none;
   }
+
+  .summary-grid-cards {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .summary-grid-cards > .summary-card {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 600px) {
@@ -814,10 +741,6 @@ button.secondary:hover {
   .detail-row textarea,
   .detail-row select {
     max-width: 100%;
-  }
-
-  .hide-mobile {
-    display: none !important;
   }
 
   .summary-table th,
@@ -1148,4 +1071,20 @@ button.secondary:hover {
 
 .campaign-table .progress-container {
   max-width: none;
+}
+
+.campaign-date-short {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .campaign-date-full {
+    display: none;
+  }
+
+  .campaign-date-short {
+    display: inline;
+    white-space: nowrap;
+    font-size: 10px;
+  }
 }

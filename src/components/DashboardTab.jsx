@@ -261,7 +261,7 @@ export default function DashboardTab({
       const campaignLegs = legsByCampaign.get(normalizeId(campaign.id)) || [];
       const margin = peakMarginByCampaign.get(campaignId) ?? 0;
       const projectedPL = computeCampaignProjectedPL(campaignLegs, campaign);
-      const durationDays = getCampaignDuration(campaignLegs);
+      const durationDays = getCampaignDuration(campaignLegs, campaign);
       const arom = computeAROM(projectedPL, margin, durationDays);
   
       if (arom != null && margin > 0) {
@@ -467,7 +467,9 @@ export default function DashboardTab({
                 <div className="summary-metric-val">
                   {topMetrics.weightedArom == null
                     ? "—"
-                    : `${topMetrics.weightedArom.toFixed(1)}%`}
+                    : `${topMetrics.weightedArom.toLocaleString("en-US", {
+                        maximumFractionDigits: 0,
+                      })}%`}
                 </div>
               </div>
               <div className="summary-card-divider" />

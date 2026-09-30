@@ -313,43 +313,49 @@ export function fmtCampaignDaysLeft(campaign, legs) {
  * Calculates campaign duration in days from earliest leg open date 
  * to latest leg close date (or today if still open).
  */
-export function getCampaignDuration(legs = []) {
-  if (!legs || legs.length === 0) return 0;
+export function getCampaignDuration(legs = [], campaign = null) {
+  if (!Array.isArray(legs) || legs.length === 0) return 0;
 
-  let minOpenTime = Infinity;
-  let maxCloseTime = -Infinity;
-  let hasOpenLegs = false;
+  const startDate =
+    getCalendarDay(campaign?.startDate) ||
+    legs
+      .map((leg) => getCalendarDay(leg.openDate))
+      .filter(Boolean)
+      .sort()[0];
 
-  legs.forEach((leg) => {
-    if (leg.openDate) {
-      // Normalize to local midnight to prevent time zone offset errors
-      const openTime = new Date(`${leg.openDate}T00:00:00`).getTime();
-      if (!isNaN(openTime) && openTime < minOpenTime) {
-        minOpenTime = openTime;
-      }
-    }
+  if (!startDate) return 0;
 
-    if (leg.isOpen) {
-      hasOpenLegs = true;
-    } else if (leg.closeDate) {
-      const closeTime = new Date(`${leg.closeDate}T00:00:00`).getTime();
-      if (!isNaN(closeTime) && closeTime > maxCloseTime) {
-        maxCloseTime = closeTime;
-      }
-    }
-  });
+  const openLegs = legs.filter((leg) => leg.isOpen);
+  let endDate;
 
-  if (minOpenTime === Infinity) return 0;
+  if (openLegs.length > 0) {
+    const expirations = openLegs
+      .filter((leg) => {
+        const type = String(leg.type || "").toLowerCase();
+        return type.includes("call") || type.includes("put");
+      })
+      .map((leg) => getCalendarDay(leg.expiry || leg.expiration))
+      .filter(Boolean)
+      .sort();
 
-  // Use current date if any leg is open; otherwise, use the latest close date
-  const endTime = hasOpenLegs
-    ? new Date().setHours(0, 0, 0, 0)
-    : maxCloseTime !== -Infinity
-    ? maxCloseTime
-    : minOpenTime;
+    endDate =
+      expirations[expirations.length - 1] ||
+      getCalendarDay(new Date());
+  } else {
+    const closeDates = legs
+      .map((leg) => getCalendarDay(leg.closeDate))
+      .filter(Boolean)
+      .sort();
 
-  const diffMs = Math.max(0, endTime - minOpenTime);
-  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+    endDate = closeDates[closeDates.length - 1] || startDate;
+  }
+
+  const startTime = new Date(`${startDate}T00:00:00`).getTime();
+  const endTime = new Date(`${endDate}T00:00:00`).getTime();
+
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return 0;
+
+  return Math.max(0, Math.round((endTime - startTime) / 86400000));
 }
 
 /**

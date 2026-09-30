@@ -16,6 +16,14 @@ function toSortableNumber(value, fallback = Number.POSITIVE_INFINITY) {
   return fallback;
 }
 
+function formatShortDate(value) {
+  const date = getCalendarDay(value);
+  if (!date) return "-";
+
+  const [year, month, day] = date.split("-");
+  return `${Number(month)}/${Number(day)}/${year.slice(-2)}`;
+}
+
 export default function OpenCampaignTable({ 
   campaigns, legs, peakMarginByCampaign, onSelect 
 }) {
@@ -70,7 +78,7 @@ export default function OpenCampaignTable({
           .sort()[0] ||
         "";
 
-      const durationDays = getCampaignDuration(legsForCampaign);
+      const durationDays = getCampaignDuration(legsForCampaign, campaign);
       const peakMargin = peakMarginByCampaign.get(campaignId) ?? 0;
       const arom = computeAROM(projectedPL, peakMargin, durationDays);
 
@@ -245,7 +253,12 @@ export default function OpenCampaignTable({
                       {campaign.name}
                     </span>
                   </td>
-                  <td className="numeric-column">{metrics?.startDate || "-"}</td>
+                  <td className="numeric-column">
+                    <span className="campaign-date-full">{metrics?.startDate || "-"}</span>
+                    <span className="campaign-date-short">
+                      {formatShortDate(metrics?.startDate)}
+                    </span>
+                  </td>
                   <td className="numeric-column">
                     {fmtWholeDollars(estimatedMargin)}
                   </td>
@@ -258,7 +271,7 @@ export default function OpenCampaignTable({
                     <DaysLeftProgressBar daysLeft={daysLeft} />
                   </td>
                   <td className="numeric-column">
-                    {metrics?.arom == null ? "—" : `${metrics.arom.toFixed(1)}%`}
+                    {metrics?.arom == null ? "—" : `${metrics.arom.toLocaleString("en-US", { maximumFractionDigits: 0 })}%`}
                   </td>
                   <td className="numeric-column">{legCount}</td>
                 </tr>

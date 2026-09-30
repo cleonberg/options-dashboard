@@ -13,6 +13,14 @@ function toSortableNumber(value, fallback = 0) {
   return fallback;
 }
 
+function formatShortDate(value) {
+  const date = getCalendarDay(value);
+  if (!date) return "-";
+
+  const [year, month, day] = date.split("-");
+  return `${Number(month)}/${Number(day)}/${year.slice(-2)}`;
+}
+
 export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampaign, onSelect }) {
   const [sortConfig, setSortConfig] = useState({
     field: "endDate",
@@ -249,7 +257,12 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
                     {campaign.name || campaign.ticker || "Unnamed"}
                   </span>
                 </td>
-                <td className="numeric-column">{campaign.endDate || "-"}</td>
+                <td className="numeric-column">
+                  <span className="campaign-date-full">{campaign.endDate || "-"}</span>
+                  <span className="campaign-date-short">
+                    {formatShortDate(campaign.endDate)}
+                  </span>
+                </td>
                 <td className="numeric-column">
                   {fmtWholeDollars(metrics?.margin ?? 0)}
                 </td>
@@ -270,7 +283,7 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
                 </div>
               </td>
                 <td className="numeric-column">
-                  {metrics?.arom == null ? "—" : `${metrics.arom.toFixed(1)}%`}
+                  {metrics?.arom == null ? "—" : `${metrics.arom.toLocaleString("en-US", { maximumFractionDigits: 0 })}%`}
                 </td>
                 <td className="numeric-column">
                   {metrics?.legCount ?? 0}

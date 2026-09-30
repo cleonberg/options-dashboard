@@ -648,209 +648,214 @@ async function handleUndelete(campaign) {
 
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      
-      {/* 1. ACCOUNT & SYNC */}
+    <div className="settings-page">
       <div className="card">
-        <h3>Account & Sync</h3>
-        <div style={{ marginBottom: "16px" }}>
-          <GoogleSignIn />
+        <h3>JSON Backup</h3>
+        <div className="settings-row">
+          <div className="settings-option">
+            <div className="settings-section-title">Export</div>
+            <button type="button" onClick={handleExport}>
+              Download Backup
+            </button>
+          </div>
+
+          <div className="settings-option">
+            <label className="settings-section-title" htmlFor="json-backup-import">
+              Import Backup
+            </label>
+            <input
+              id="json-backup-import"
+              type="file"
+              className="input"
+              ref={fileInputRef}
+              accept=".json"
+              onChange={handleImport}
+            />
+          </div>
         </div>
-        <p className="small">Force a manual sync if data seems out of date.</p>
+      </div>
+
+      <div className="card">
+        <h3>Import Tracker (CSV)</h3>
+        <div className="settings-row">
+          <div className="settings-option">
+            <label className="settings-section-title" htmlFor="tracker-csv-import">
+              Choose CSV File
+            </label>
+            <input
+              id="tracker-csv-import"
+              type="file"
+              className="input"
+              accept=".csv,.txt"
+              onChange={handleCsvImport}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Export Data (CSV)</h3>
+        <div className="settings-row">
+          <div className="settings-option">
+            <div className="settings-section-title">Leg Information</div>
+            <button type="button" onClick={handleLegInfoExport}>
+              Export Leg Info
+            </button>
+          </div>
+
+          <div className="settings-option">
+            <div className="settings-section-title">Trade Analysis</div>
+            <button type="button" onClick={handleTradeAnalysisExport}>
+              Export Trade Analysis
+            </button>
+          </div>
+        </div>
+      </div>
+
+  
+      <details className="card">
+        <summary className="settings-section-title">
+          Trash &amp; Recovery ({deletedCampaigns.length})
+        </summary>
+        <p className="small">
+          Restore a deleted campaign to your active campaign list.
+        </p>
+  
+        {deletedCampaigns.length === 0 ? (
+          <p className="small">No deleted campaigns.</p>
+        ) : (
+          <div className="leg-list">
+            {deletedCampaigns.map((campaign) => {
+              const ticker = campaign.ticker || campaign.Ticker;
+              const name =
+                campaign.name || ticker || `Campaign ${campaign.id}`;
+              const startDate = formatExportDate(campaign.startDate);
+  
+              return (
+                <div
+                  key={campaign.id}
+                  className="leg-row"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "8px 12px"
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div>{name}</div>
+                    {ticker && name !== ticker && (
+                      <div className="small">{ticker}</div>
+                    )}
+                    <div className="small">
+                      ID: {campaign.id}
+                      {startDate ? ` · Started ${startDate}` : ""}
+                    </div>
+                  </div>
+  
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => handleUndelete(campaign)}
+                    style={{ flex: "0 0 auto", padding: "4px 8px" }}
+                  >
+                    Undelete
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </details>
+  
+      <details className="card">
+        <summary className="settings-section-title">
+          Maintenance &amp; One-Time Tools
+        </summary>
+  
+        <div className="settings-section-title">Campaign Naming</div>
+        <p className="small">
+          Rename existing campaigns using the standard ticker numbering.
+        </p>
+        <button className="secondary" onClick={handleRetroactiveRename}>
+          Retroactively Rename Campaigns
+        </button>
+  
+        <div className="settings-section-title">Date Migration</div>
+        <DateMigrationAdmin uid={auth.currentUser?.uid} />
+  
+        <div className="settings-section-title">Database Maintenance</div>
+        <p className="small">
+          Repair mixed timestamp formats in local storage.
+        </p>
         <button
           className="secondary"
-          onClick={() => forceSync(auth.currentUser?.uid)}
-        >
-          Force Sync Now
-        </button>
-      </div>
-
-      {/* 2. DATA MANAGEMENT (IMPORT/EXPORT) */}
-      <div className="card">
-        <h3>Data Management</h3>
-        
-        <div className="settings-section-title" style={{ marginTop: "12px" }}>Backup (JSON)</div>
-        <div className="settings-row" style={{ alignItems: "center" }}>
-          <button className="secondary" onClick={handleExport}>
-            Export Backup
-          </button>
-          <span className="small" style={{ margin: "0 8px" }}>OR</span>
-          <input
-            type="file"
-            className="input"
-            ref={fileInputRef}
-            accept=".json"
-            onChange={handleImport}
-            style={{ maxWidth: "200px" }}
-          />
-        </div>
-
-        <div className="settings-section-title" style={{ marginTop: "16px" }}>Import Tracker (CSV)</div>
-        <div className="settings-row">
-          <input
-            type="file"
-            className="input"
-            accept=".csv,.txt"
-            onChange={handleCsvImport}
-            style={{ maxWidth: "250px" }}
-          />
-        </div>
-
-        <div className="settings-section-title" style={{ marginTop: "16px" }}>
-          Leg Information (CSV)
-        </div>
-
-        <div className="settings-row" style={{ alignItems: "center" }}>
-          <button
-            className="secondary"
-            onClick={handleLegInfoExport}
-          >
-            Export Leg Info
-          </button>
-
-          <span className="small" style={{ margin: "0 8px" }}>
-            Raw leg data from the local database
-          </span>
-        </div>
-
-        <div className="settings-section-title" style={{ marginTop: "16px" }}>
-          Trade Analysis (CSV)
-        </div>
-
-        <div className="settings-row" style={{ alignItems: "center" }}>
-          <button
-            className="secondary"
-            onClick={handleTradeAnalysisExport}
-          >
-            Export Trade Analysis
-          </button>
-
-          <span className="small" style={{ margin: "0 8px" }}>
-            All legs with cash flow and P/L
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-8 p-4 border border-red-500 rounded bg-red-50">
-        <h3 className="text-red-700 font-bold mb-2">Admin Tools</h3>
-        <p className="text-sm text-red-600 mb-4">
-          Run this once to apply the standard "TICKER #123" naming convention to all historical campaigns.
-        </p>
-        <button 
-          onClick={handleRetroactiveRename}
-          className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Retroactively Rename All Campaigns
-        </button>
-
-        <div className="border-t border-red-200 pt-4">
-          <DateMigrationAdmin uid={auth.currentUser?.uid} />
-        </div>
-      </div>
-
-      <div className="card settings-section">
-        <h3>Database Maintenance</h3>
-        <p style={{ fontSize: "14px", color: "#a1a1aa" }}>
-          Fixes mixed timestamp formats in local storage caused by previous sync bugs.
-        </p>
-
-        <button 
-          onClick={handleFixTimestamps} 
+          onClick={handleFixTimestamps}
           disabled={isCleaning}
-          style={{ marginTop: "10px" }}
         >
           {isCleaning ? "Repairing..." : "Repair Local Timestamps"}
         </button>
-
+  
         {statusMessage && (
-          <p style={{ marginTop: "8px", fontSize: "13px", color: statusMessage.includes("✅") ? "#4ade80" : "#f87171" }}>
+          <p
+            className="small"
+            style={{
+              marginTop: "8px",
+              color: statusMessage.includes("successfully")
+                ? "var(--color-positive)"
+                : "var(--color-negative)"
+            }}
+          >
             {statusMessage}
           </p>
         )}
-      </div>
-
-      {/* 3. TRASH & RECOVERY */}
-      <div className="card">
-        <h3>Trash & Recovery</h3>
-        <p className="small">Deleted campaigns are stored as local tombstones until permanently cleared.</p>
-        
-        {deletedCampaigns.length === 0 ? (
-          <div className="small" style={{ opacity: 0.7, padding: "8px 0" }}>
-            No deleted campaigns.
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
-            {deletedCampaigns.map((c) => (
-              <div 
-                key={c.id} 
-                className="leg-row" 
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px" }}
-              >
-                <span>{c.Ticker || "Unknown"} (Deleted)</span>
-                <button 
-                  className="secondary" 
-                  onClick={() => handleUndelete(c)}
-                  style={{ padding: "4px 8px", fontSize: "12px" }}
-                >
-                  Undelete
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 4. DANGER ZONE */}
-      <div className="card" style={{ border: "1px solid var(--color-negative)", background: "rgba(239, 68, 68, 0.05)" }}>
-        {/* ✨ ADDED onClick listener to the Danger Zone title */}
-        <h3 
-          style={{ color: "var(--color-negative)", cursor: "pointer", userSelect: "none" }}
+  
+        <div className="settings-section-title">Danger Zone</div>
+        <p className="small">
+          Resync local data from the server or permanently delete all data.
+        </p>
+        <div className="settings-row">
+          <button
+            className="secondary"
+            onClick={handleReset}
+            disabled={isResetting}
+          >
+            {isResetting ? "Resyncing..." : "Resync from Server"}
+          </button>
+          <button
+            onClick={handleDeleteAll}
+            style={{ backgroundColor: "var(--color-negative)" }}
+          >
+            Delete All Data
+          </button>
+        </div>
+  
+        <h3
           onClick={handleSecretTap}
+          style={{
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            marginTop: "16px"
+          }}
         >
-          Danger Zone
+          Developer Tools
         </h3>
-        
-        <div className="settings-section-title" style={{ marginTop: "12px" }}>Fix Local Database</div>
-        <p className="small" style={{ marginBottom: "8px" }}>Wipes local data and re-downloads everything from your cloud account.</p>
-        <button 
-          className="secondary" 
-          onClick={handleReset}
-          disabled={isResetting}
-        >
-          {isResetting ? "Resyncing..." : "Resync from Server"}
-        </button>
-
-        <div className="settings-section-title" style={{ marginTop: "20px" }}>Nuclear Option</div>
-        <p className="small" style={{ marginBottom: "8px" }}>Permanently deletes everything from this device AND the cloud.</p>
-        <button
-          style={{ backgroundColor: "var(--color-negative)", color: "white" }}
-          onClick={handleDeleteAll}
-        >
-          Delete ALL Data Forever
-        </button>
-      </div>
-
-      {/* ✨ 5. DEVELOPER MODE (HIDDEN) */}
-      {showDevMode && (
-        <div className="card" style={{ border: "2px dashed #9333ea", background: "rgba(147, 51, 234, 0.05)", marginTop: "8px" }}>
-          <h3 style={{ color: "#9333ea", marginBottom: "8px" }}>🛠️ Developer Tools</h3>
-          
-          <div className="settings-section-title">Nuke & Pave (Hard Reset)</div>
-          <p className="small" style={{ marginBottom: "12px", color: "var(--color-text-secondary)" }}>
-            Force-overwrites your entire local Dexie database with a JSON file, and pushes tombstones to force all other devices to wipe their local caches.
-          </p>
-          <div className="settings-row">
+  
+        {showDevMode && (
+          <>
+            <p className="small">
+              Overwrite local data from a JSON backup and sync it.
+            </p>
             <input
               type="file"
               className="input"
               accept=".json"
               onChange={handleHardResetImport}
-              style={{ maxWidth: "250px", borderColor: "#9333ea" }}
             />
-          </div>
-        </div>
-      )}
-
+          </>
+        )}
+      </details>
     </div>
   );
 }
