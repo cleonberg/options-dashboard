@@ -6,7 +6,6 @@ const DATE_PRESETS = [
     ["90d", "90d"],
     ["30d", "30d"],
     ["7d", "7d"],
-    ["all", "All"]
 ];
 
 const PRESET_LABELS = Object.fromEntries(DATE_PRESETS);
@@ -40,7 +39,7 @@ export default function FilterBar({
         if (preset === "ytd") {
             start = toISODateStr(new Date(today.getFullYear(), 0, 1));
             end = toISODateStr(today);
-        } else if (preset !== "all") {
+        } else {
             const days = Number.parseInt(preset, 10);
             const firstDay = new Date(
                 today.getFullYear(),

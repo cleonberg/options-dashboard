@@ -1,7 +1,6 @@
 // AllLegsTab.jsx
 import React, { useState, useMemo } from "react";
 import LegTable from "./LegTable.jsx";
-import FilterBar from "./FilterBar.jsx";
 import {
   computeLegPL,
   fmtWholeDollars,
@@ -9,21 +8,21 @@ import {
 } from "../logic/logic.js";
 
 export default function AllLegsTab({
-  campaigns = [], // ⭐ NEW: Accept campaigns from App.jsx
+  campaigns = [],
   legs = [],
   reloadAll,
-  uid
+  uid,
+  searchTerm = "",
+  startDateFilter = "",
+  endDateFilter = "",
 }) {
-  const [query, setQuery] = useState("");
   const [filterTicker, setFilterTicker] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("openDateDesc");
-  const [startDateFilter, setStartDateFilter] = useState("");
-  const [endDateFilter, setEndDateFilter] = useState("");
 
   const filteredLegs = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = searchTerm.trim().toLowerCase();
 
     return legs.filter((l) => {
       if (filterTicker && l.ticker !== filterTicker) return false;
@@ -68,7 +67,7 @@ export default function AllLegsTab({
     });
   }, [
     legs,
-    query,
+    searchTerm,
     filterTicker,
     filterType,
     filterStatus,
@@ -152,18 +151,6 @@ export default function AllLegsTab({
 
   return (
     <>
-      {/* Filter Card */}
-      <div className="card filter-card">
-        <FilterBar
-          searchTerm={query}
-          setSearchTerm={setQuery}
-          startDateFilter={startDateFilter}
-          setStartDateFilter={setStartDateFilter}
-          endDateFilter={endDateFilter}
-          setEndDateFilter={setEndDateFilter}
-        />
-      </div>
-
       {/* Summary Card */}
       <div className="summary-grid-cards">
         <div className="summary-card">

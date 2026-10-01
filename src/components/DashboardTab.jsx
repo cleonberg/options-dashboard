@@ -1,6 +1,5 @@
 // DashboardTab.jsx
 import React, { lazy, Suspense, useState, useMemo } from "react";
-import FilterBar from "./FilterBar.jsx";
 import {
   fmtWholeDollars,
   cashClass,
@@ -77,11 +76,8 @@ export default function DashboardTab({
   onSelectCampaign,
   onAddCampaign,
   searchTerm = "",
-  setSearchTerm,
   startDateFilter = "",
-  setStartDateFilter,
   endDateFilter = "",
-  setEndDateFilter
 }) {
   const [showCombineModal, setShowCombineModal] = useState(false);
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
@@ -404,25 +400,8 @@ export default function DashboardTab({
     return <div className="card">Loading dashboard…</div>;
   }
 
-  const hasActiveFilters = Boolean(
-    searchTerm || startDateFilter || endDateFilter
-  );
-
   return (
     <div className="dashboard-tab">
-
-      {/* Filters */}
-      <div className="card filter-card">
-        <FilterBar
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          startDateFilter={startDateFilter}
-          setStartDateFilter={setStartDateFilter}
-          endDateFilter={endDateFilter}
-          setEndDateFilter={setEndDateFilter}
-        />
-      </div>
-
       {/* Metrics */}
       <div style={{ marginBottom: "24px" }}>
         <div className="summary-grid-cards">

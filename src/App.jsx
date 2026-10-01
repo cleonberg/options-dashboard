@@ -3,6 +3,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import Header from "./components/Header.jsx";
 import TabBar from "./components/TabBar.jsx";
+import FilterBar from "./components/FilterBar.jsx";
+
 const DashboardTab = lazy(() => import("./components/DashboardTab.jsx"));
 const AllLegsTab = lazy(() => import("./components/AllLegsTab.jsx"));
 const CampaignsTab = lazy(() => import("./components/CampaignsTab.jsx"));
@@ -38,9 +40,9 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState("synced");
   const [lastSync, setLastSync] = useState(null);
 
-  const [dashboardSearchTerm, setDashboardSearchTerm] = useState("");
-  const [dashboardStartDateFilter, setDashboardStartDateFilter] = useState("2026-01-01");
-  const [dashboardEndDateFilter, setDashboardEndDateFilter] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [startDateFilter, setStartDateFilter] = useState("2026-01-01");
+  const [endDateFilter, setEndDateFilter] = useState("");
 
   const dashboardSummary = useMemo(
     () => computeDashboardSummary(campaigns, legs),
@@ -135,17 +137,23 @@ export default function App() {
             legs={legs}
             onSelectCampaign={handleSelectCampaign}
             onAddCampaign={handleAddCampaign}
-            searchTerm={dashboardSearchTerm}
-            setSearchTerm={setDashboardSearchTerm}
-            startDateFilter={dashboardStartDateFilter}
-            setStartDateFilter={setDashboardStartDateFilter}
-            endDateFilter={dashboardEndDateFilter}
-            setEndDateFilter={setDashboardEndDateFilter}
+            searchTerm={searchTerm}
+            startDateFilter={startDateFilter}
+            endDateFilter={endDateFilter}
           />
         );
 
       case "trades":
-        return <AllLegsTab campaigns={campaigns} legs={legs} uid={uid} />;
+        return (
+          <AllLegsTab
+            campaigns={campaigns}
+            legs={legs}
+            uid={uid}
+            searchTerm={searchTerm}
+            startDateFilter={startDateFilter}
+            endDateFilter={endDateFilter}
+          />
+        );
 
       case "campaigns":
         return (
@@ -179,6 +187,18 @@ export default function App() {
 
       <main>
         <Suspense fallback={<div className="card">Loading tab...</div>}>
+          {(activeTab === "dashboard" || activeTab === "trades") && (
+            <div className="card filter-card">
+              <FilterBar
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                startDateFilter={startDateFilter}
+                setStartDateFilter={setStartDateFilter}
+                endDateFilter={endDateFilter}
+                setEndDateFilter={setEndDateFilter}
+              />
+            </div>
+          )}
           {renderTab()}
         </Suspense>
       </main>

@@ -259,7 +259,7 @@ export default function CombinedCashFlowChart({
                 return (
                   <div
                     style={{
-                      backgroundColor: "#1b2b4f",
+                      backgroundColor: "rgba(27, 43, 79, 0.78)",
                       border: "1px solid #24345f",
                       borderRadius: "6px",
                       padding: "8px 12px",
