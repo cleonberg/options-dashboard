@@ -174,7 +174,7 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
   }, [campaigns, campaignMetricsMap, sortConfig]);
 
   const getSortIndicator = (field) => {
-    if (sortConfig.field !== field) return " ↕";
+    if (sortConfig.field !== field) return "";
     return sortConfig.direction === "asc" ? " ▲" : " ▼";
   };
 
@@ -182,7 +182,7 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
     <div className="table-container">
       <table className="summary-table campaign-table">
         <colgroup>
-          <col style={{ width: "18%" }} />
+          <col style={{ width: "14%" }} />
           <col style={{ width: "12%" }} />
           <col style={{ width: "14%" }} />
           <col style={{ width: "18%" }} />
@@ -223,7 +223,7 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
               onClick={() => handleSort("duration")}
               style={{ cursor: "pointer", userSelect: "none" }}
             >
-              Timeline (Days in Trade){getSortIndicator("duration")}
+              Days{getSortIndicator("duration")}
             </th>
             <th className="numeric-column">AROM</th>
             <th
@@ -277,7 +277,7 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
                       style={{ width: `${durationPercent}%` }}
                     />
                   </div>
-                  <span style={{ fontSize: "12px", minWidth: "42px", fontWeight: 500 }}>
+                  <span style={{ fontSize: "12px", minWidth: "12px", fontWeight: 500 }}>
                     {durationDays}d
                   </span>
                 </div>

@@ -170,7 +170,7 @@ export default function OpenCampaignTable({
   }, [campaigns, campaignMetricsMap, marginByCampaign, sortConfig]);
 
   const getSortIndicator = (field) => {
-    if (sortConfig.field !== field) return " ↕";
+    if (sortConfig.field !== field) return "";//" ↕";
     return sortConfig.direction === "asc" ? " ▲" : " ▼";
   };
 
@@ -179,7 +179,7 @@ export default function OpenCampaignTable({
       <div className="table-container">
         <table className="summary-table campaign-table campaign-table-open">
         <colgroup>
-          <col style={{ width: "18%" }} />
+          <col style={{ width: "14%" }} />
           <col style={{ width: "12%" }} />
           <col style={{ width: "14%" }} />
           <col style={{ width: "18%" }} />
@@ -220,7 +220,7 @@ export default function OpenCampaignTable({
                 onClick={() => handleSort("daysLeft")}
                 style={{ cursor: "pointer", userSelect: "none" }}
               >
-                Timeline (DTE){getSortIndicator("daysLeft")}
+                DTE{getSortIndicator("daysLeft")}
               </th>
               <th className="numeric-column">AROM</th>
               <th

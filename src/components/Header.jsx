@@ -5,6 +5,7 @@ import {
     signInWithGooglePopup,
     signOutUser
 } from "../auth.js";
+import logo from "../assets/pwa-192x192.png";
 
 export default function Header({
     syncStatus,
@@ -49,6 +50,7 @@ export default function Header({
     return (
         <header className="app-header">
             <div className="header-left">
+                <img src={logo} alt="" aria-hidden="true" />
                 <h2>ThetaTracker</h2>
             </div>
 

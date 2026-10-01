@@ -134,11 +134,10 @@ export default function WeeklyCashFlowChart({
             <XAxis
               dataKey="weekStart"
               type="category"
-              ticks={monthlyTickKeys}
               tickFormatter={formatWeekStart}
               stroke="#9fb3ff"
               tick={{ fontSize: 12 }}
-              interval="preserveStartEnd"
+              // interval={0}
             />
 
             <YAxis

@@ -242,19 +242,36 @@ export async function ensureInitialSync(uid) {
   if (campaignCount === 0 && legCount === 0) {
     await initialSync(uid);
   }
+}
 
-  processDeletionQueue().catch(console.error);
+export async function syncPendingChanges(uid) {
+  if (!uid) return;
+
+  await ensureInitialSync(uid);
+  await forceSync(uid);
+  await processDeletionQueue();
 }
 
 export function startBackgroundSync(uid) {
   if (!uid) return () => {};
-  
+
   const unsubscribeCampaigns = subscribeToCampaigns(uid);
   const unsubscribeLegs = subscribeToLegs(uid);
+
+  const syncOnReconnect = async () => {
+    try {
+      await syncPendingChanges(uid);
+    } catch (err) {
+      console.error("[sync] reconnect sync failed", err);
+    }
+  };
+
+  window.addEventListener("online", syncOnReconnect);
 
   return () => {
     unsubscribeCampaigns();
     unsubscribeLegs();
+    window.removeEventListener("online", syncOnReconnect);
   };
 }
 
@@ -719,19 +736,93 @@ export async function combineCampaigns(uid, sourceCampaignId, targetCampaignId) 
     throw new Error("Cannot combine a campaign into itself.");
   }
 
-  const sourceLegs = await dbLocal.legs
-    .where("campaignId")
-    .equals(sourceCampaignId)
-    .toArray();
+  const now = nowMillis();
 
-  for (const leg of sourceLegs) {
-    await editLeg(uid, {
-      ...leg,
-      campaignId: targetCampaignId
-    });
-  }
+  await dbLocal.transaction(
+    "rw",
+    dbLocal.campaigns,
+    dbLocal.legs,
+    dbLocal.deletionJobs,
+    async () => {
+      const [sourceCampaign, targetCampaign] = await Promise.all([
+        dbLocal.campaigns.get(sourceCampaignId),
+        dbLocal.campaigns.get(targetCampaignId),
+      ]);
 
-  await deleteCampaign(uid, sourceCampaignId);
+      if (!sourceCampaign || !targetCampaign) {
+        throw new Error("Source or target campaign was not found locally.");
+      }
+
+      const sourceLegs = await dbLocal.legs
+        .where("campaignId")
+        .equals(sourceCampaignId)
+        .toArray();
+
+      await dbLocal.legs.bulkPut(
+        sourceLegs.map((leg) =>
+          normalizeLeg({
+            ...leg,
+            campaignId: targetCampaignId,
+            updatedAt: now,
+            clientUpdatedAt: now,
+            dirty: true,
+          })
+        )
+      );
+
+      const targetLegs = (await dbLocal.legs
+        .where("campaignId")
+        .equals(targetCampaignId)
+        .toArray()
+      ).filter((leg) => !leg.deleted);
+
+      if (targetLegs.length > 0) {
+        const openDates = targetLegs
+          .map((leg) => leg.openDate)
+          .filter(Boolean)
+          .sort();
+        const closeDates = targetLegs
+          .map((leg) => leg.closeDate)
+          .filter(Boolean)
+          .sort();
+
+        const isFullyClosed = closeDates.length === targetLegs.length;
+
+        await dbLocal.campaigns.put(
+          normalizeCampaign({
+            ...targetCampaign,
+            startDate: openDates[0] ?? null,
+            endDate:
+              isFullyClosed && closeDates.length > 0
+                ? closeDates[closeDates.length - 1]
+                : null,
+            status: isFullyClosed ? "closed" : "open",
+            updatedAt: now,
+            clientUpdatedAt: now,
+            dirty: true,
+          })
+        );
+      }
+
+      await dbLocal.campaigns.put(
+        normalizeCampaign({
+          ...sourceCampaign,
+          deleted: true,
+          updatedAt: now,
+          clientUpdatedAt: now,
+          dirty: true,
+        })
+      );
+
+      await dbLocal.deletionJobs.add({
+        uid,
+        type: "deleteCampaign",
+        targetId: sourceCampaignId,
+        createdAt: now,
+        attempts: 0,
+      });
+    }
+  );
 }
 
 export async function syncCampaignDates(uid, campaignId) {

@@ -11,9 +11,8 @@ const SettingsTab = lazy(() => import("./components/SettingsTab.jsx"));
 import { startAuth } from "./auth.js";
 import { computeDashboardSummary } from "./logic/logic.js";
 import {
-  ensureInitialSync,
   startBackgroundSync,
-  forceSync,
+  syncPendingChanges,
   createCampaign,
 } from "./sync/sync.js";
 
@@ -74,12 +73,11 @@ export default function App() {
     const initSync = async () => {
       try {
         setSyncStatus("syncing");
-        await ensureInitialSync(uid);
-        await forceSync(uid);
+        stopBackgroundSync = startBackgroundSync(uid);
+        await syncPendingChanges(uid);
 
         if (isCancelled) return;
-
-        stopBackgroundSync = startBackgroundSync(uid);
+        
         setSyncStatus("synced");
         setLastSync(new Date());
       } catch (err) {
@@ -103,7 +101,7 @@ export default function App() {
 
     try {
       setSyncStatus("syncing");
-      await forceSync(uid);
+      await syncPendingChanges(uid);
       setSyncStatus("synced");
       setLastSync(new Date());
     } catch (err) {

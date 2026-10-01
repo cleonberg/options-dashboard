@@ -12,7 +12,38 @@ function nextBackoffMs(attempts) {
   return Math.min(max, base * Math.pow(2, attempts)) + jitter;
 }
 
-const MAX_ATTEMPTS = 6;
+let retryTimer = null;
+
+function scheduleNextDeletionRetry() {
+  if (retryTimer !== null) {
+    window.clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+
+  if (typeof window === "undefined" || !navigator.onLine) return;
+
+  dbLocal.deletionJobs
+    .toArray()
+    .then((jobs) => {
+      const nextAttemptAt = jobs.reduce((earliest, job) => {
+        if (!job.nextAttemptAt || job.nextAttemptAt <= Date.now()) {
+          return earliest;
+        }
+
+        return earliest === null || job.nextAttemptAt < earliest
+          ? job.nextAttemptAt
+          : earliest;
+      }, null);
+
+      if (nextAttemptAt === null) return;
+
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        processDeletionQueue().catch(console.error);
+      }, Math.max(0, nextAttemptAt - Date.now()));
+    })
+    .catch(console.error);
+}
 
 /**
  * Process deletionJobs queue safely and efficiently using writeBatch.
@@ -125,30 +156,24 @@ export async function processDeletionQueue({ hardLocalCleanup = true } = {}) {
        await dbLocal.deletionJobs.bulkDelete(jobIds);
        console.log("[processDeletionQueue] All deletions successful and jobs removed");
     } else {
-       // If a batch failed (e.g. offline), apply backoff to the jobs so they retry later
-       for (const job of jobsToProcess) {
-         const attempts = (job.attempts || 0) + 1;
-         const backoffMs = nextBackoffMs(attempts);
+      // If a batch failed (e.g. offline), apply backoff to the jobs so they retry later
+      for (const job of jobsToProcess) {
+        const attempts = (job.attempts || 0) + 1;
+        const backoffMs = nextBackoffMs(attempts);
 
-         if (attempts >= MAX_ATTEMPTS) {
-           await dbLocal.deletionJobs.delete(job.id); // Give up
-         } else {
-           await dbLocal.deletionJobs.update(job.id, {
-             attempts,
-             nextAttemptAt: Date.now() + backoffMs,
-             lastError: lastError?.message || "Batch failure",
-             lastErrorAt: Date.now()
-           });
-         }
-       }
+        await dbLocal.deletionJobs.update(job.id, {
+          attempts,
+          nextAttemptAt: Date.now() + backoffMs,
+          lastError: lastError?.message || "Batch failure",
+          lastErrorAt: Date.now(),
+        });
+      }
     }
 
   } catch (err) {
     console.error("[processDeletionQueue] Fatal error", err);
   } finally {
     _processingLock = false;
+    scheduleNextDeletionRetry();
   }
 }
-
-// ensure this runs on reconnect
-window.addEventListener("online", () => processDeletionQueue().catch(console.error));

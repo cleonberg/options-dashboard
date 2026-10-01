@@ -85,9 +85,22 @@ h2, h3 {
   border-bottom: 1px solid var(--border-color);
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .header-left h2 {
   margin: 0;
   font-size: 20px;
+  line-height: 1;
+}
+
+.header-left img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
 }
 
 .header-right {
@@ -127,7 +140,7 @@ h2, h3 {
 .card {
   background: var(--bg-card);
   border-radius: 8px;
-  padding: 16px;
+  padding: 8px;
   border: 1px solid var(--border-color);
   margin-bottom: 12px;
   color: var(--text-main);
@@ -282,20 +295,6 @@ button.secondary:hover {
 }
 
 /* Badges & Indicators */
-
-.strategy-badge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background-color: #24345f;
-  color: #cfd8ff;
-  margin-left: 8px;
-  border: 1px solid #3b4e7e;
-  white-space: nowrap;
-}
-
 .progress-container {
   display: flex;
   align-items: center;
@@ -749,15 +748,9 @@ button.secondary:hover {
     font-size: 12px;
   }
 
-  .strategy-badge {
-    font-size: 9px;
-    padding: 1px 5px;
-    margin-left: 4px;
-  }
-
   .progress-container {
     max-width: 90px;
-    gap: 4px;
+    gap: 0px;
   }
 }
 
@@ -1064,9 +1057,19 @@ button.secondary:hover {
   white-space: nowrap;
 }
 
+.campaign-table th,
+.campaign-table td {
+  text-align: center;
+}
+
 .campaign-table th.numeric-column,
 .campaign-table td.numeric-column {
-  text-align: right;
+  text-align: center;
+}
+
+.campaign-table th:first-child,
+.campaign-table td:first-child {
+  text-align: left;
 }
 
 .campaign-table .progress-container {
@@ -1086,5 +1089,10 @@ button.secondary:hover {
     display: inline;
     white-space: nowrap;
     font-size: 10px;
+  }
+
+  .campaign-table th {
+    font-size: 10px;
+    padding: 6px 3px;
   }
 }

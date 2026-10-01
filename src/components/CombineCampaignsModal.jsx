@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { combineCampaigns } from "../sync/sync.js";
+import { combineCampaigns, syncPendingChanges } from "../sync/sync.js";
 import { getCampaignLabel } from "../logic/logic.js"; // <-- 1. Import the function
 
 export default function CombineCampaignsModal({ campaigns, uid, onClose }) {
@@ -45,6 +45,12 @@ export default function CombineCampaignsModal({ campaigns, uid, onClose }) {
       setLoading(true);
       await combineCampaigns(uid, sourceId, targetId);
       onClose(); // Close modal on success
+
+      if (uid && navigator.onLine) {
+        void syncPendingChanges(uid).catch((err) => {
+          console.error("Background sync after combine failed:", err);
+        });
+      }
     } catch (err) {
       console.error("Failed to combine campaigns:", err);
       alert("Error combining campaigns.");

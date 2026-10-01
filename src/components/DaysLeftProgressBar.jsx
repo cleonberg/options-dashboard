@@ -21,7 +21,7 @@ export default function DaysLeftProgressBar({ daysLeft, maxDays = 7 }) {
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span style={{ fontSize: "12px", minWidth: "42px", fontWeight: 500 }}>
+      <span style={{ fontSize: "12px", minWidth: "12px", fontWeight: 500 }}>
         {daysLeft < 0 ? "Expired" : `${daysLeft}d`}
       </span>
     </div>

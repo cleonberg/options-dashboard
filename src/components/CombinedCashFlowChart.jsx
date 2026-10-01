@@ -236,6 +236,7 @@ export default function CombinedCashFlowChart({
               tick={{ fontSize: 12 }}
             />
             <YAxis
+              domain={["auto", "auto"]}
               stroke="#9fb3ff"
               tickFormatter={formatYAxis}
               tick={{ fontSize: 12 }}
@@ -244,7 +245,6 @@ export default function CombinedCashFlowChart({
             {/* <Legend /> */}
 
             <Tooltip
-              cursor={false}
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
             
