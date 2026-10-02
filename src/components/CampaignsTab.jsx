@@ -25,6 +25,8 @@ export default function CampaignsTab(props) {
   const {
     campaigns,
     legs,
+    accounts=[],
+    defaultAccountId,
     selectedCampaignId,
     setSelectedCampaignId,
     uid,
@@ -169,6 +171,8 @@ export default function CampaignsTab(props) {
       {showEditForm && (
         <div className="card" style={{ border: "1px solid #4ade80" }}>
           <CampaignForm 
+            accounts={accounts}
+            defaultAccountId={defaultAccountId}
             initialData={selectedCampaign} 
             onSubmit={handleEditCampaign} 
             onCancel={() => setShowEditForm(false)} 

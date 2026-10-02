@@ -2,6 +2,7 @@
 import {
   collection,
   query,
+  where,
   onSnapshot,
   getDocs,
   getDoc,
@@ -28,6 +29,197 @@ import {
 
 function nowMillis() {
   return Date.now();
+}
+
+export const ACCOUNT_COLLECTIONS = [
+  "accounts",
+  "cashTransactions",
+  "accountSnapshots",
+];
+
+export function getDefaultAccountId(uid, accounts = []) {
+  return accounts.find((account) => account.uid === uid && account.isDefault)?.id;
+}
+
+function normalizeAccountRecord(raw) {
+  return {
+    ...raw,
+    deleted: !!raw.deleted,
+    dirty: !!raw.dirty,
+    updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
+    clientUpdatedAt:
+      toMillis(raw.clientUpdatedAt) ?? toMillis(raw.updatedAt) ?? Date.now(),
+    serverUpdatedAt: toMillis(raw.serverUpdatedAt) ?? null,
+  };
+}
+
+export async function saveAccountRecord(uid, collectionName, fields) {
+  if (!uid || !ACCOUNT_COLLECTIONS.includes(collectionName)) {
+    throw new Error("Invalid account record or collection.");
+  }
+
+  const id = fields.id ?? crypto.randomUUID();
+  const existing = await dbLocal[collectionName].get(id);
+  if (existing && existing.uid !== uid) {
+    throw new Error("Cannot overwrite a record owned by another user.");
+  }
+  const now = Date.now();
+
+  const record = normalizeAccountRecord({
+    ...existing,
+    ...fields,
+    id,
+    uid,
+    updatedAt: now,
+    clientUpdatedAt: now,
+    dirty: true,
+    deleted: false,
+  });
+
+  await dbLocal[collectionName].put(record);
+
+  try {
+    await syncPendingChanges(uid);
+  } catch (err) {
+    console.warn("Account data saved locally; sync will retry later.", err);
+  }
+
+  return id;
+}
+
+export async function createAccount(uid, fields) {
+  const accounts = await dbLocal.accounts.where("uid").equals(uid).toArray();
+  const id = crypto.randomUUID();
+
+  await saveAccountRecord(uid, "accounts", {
+    ...fields,
+    id,
+    isDefault: accounts.length === 0,
+  });
+
+  return id;
+}
+
+export async function setDefaultAccount(uid, accountId) {
+  const accounts = await dbLocal.accounts.where("uid").equals(uid).toArray();
+  if (!accounts.some((account) => account.id === accountId)) {
+    throw new Error("Account not found.");
+  }
+
+  const now = Date.now();
+  await dbLocal.transaction("rw", dbLocal.accounts, async () => {
+    await dbLocal.accounts.bulkPut(
+      accounts.map((account) => ({
+        ...account,
+        isDefault: account.id === accountId,
+        updatedAt: now,
+        clientUpdatedAt: now,
+        dirty: true,
+      }))
+    );
+  });
+
+  await syncPendingChanges(uid);
+}
+
+export async function deleteAccount(uid, accountId) {
+  if (!uid || !accountId) {
+    throw new Error("A signed-in user and account are required.");
+  }
+
+  const accounts = await dbLocal.accounts.where("uid").equals(uid).toArray();
+  const account = accounts.find((item) => item.id === accountId);
+
+  if (!account) throw new Error("Account not found.");
+  if (accounts.length <= 1) {
+    throw new Error("You cannot delete your only account.");
+  }
+  if (account.isDefault) {
+    throw new Error("Make another account the default before deleting this one.");
+  }
+
+  const localCampaignCount = await dbLocal.campaigns
+    .where("accountId")
+    .equals(accountId)
+    .filter((campaign) => campaign.uid === uid)
+    .count();
+
+  const remoteCampaigns = await getDocs(
+    query(
+      collection(db, "users", uid, "campaigns"),
+      where("accountId", "==", accountId)
+    )
+  );
+
+  if (localCampaignCount > 0 || !remoteCampaigns.empty) {
+    throw new Error("Reassign campaigns to another account before deleting this account.");
+  }
+
+  const [cashDocs, snapshotDocs] = await Promise.all([
+    getDocs(query(
+      collection(db, "users", uid, "cashTransactions"),
+      where("accountId", "==", accountId)
+    )),
+    getDocs(query(
+      collection(db, "users", uid, "accountSnapshots"),
+      where("accountId", "==", accountId)
+    )),
+  ]);
+
+  const refs = [
+    doc(db, "users", uid, "accounts", accountId),
+    ...cashDocs.docs.map((item) => item.ref),
+    ...snapshotDocs.docs.map((item) => item.ref),
+  ];
+
+  for (let start = 0; start < refs.length; start += 400) {
+    const batch = writeBatch(db);
+    refs.slice(start, start + 400).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+
+  await dbLocal.transaction(
+    "rw",
+    dbLocal.accounts,
+    dbLocal.cashTransactions,
+    dbLocal.accountSnapshots,
+    async () => {
+      await Promise.all([
+        dbLocal.accounts.delete(accountId),
+        dbLocal.cashTransactions
+          .where("accountId")
+          .equals(accountId)
+          .filter((item) => item.uid === uid)
+          .delete(),
+        dbLocal.accountSnapshots
+          .where("accountId")
+          .equals(accountId)
+          .filter((item) => item.uid === uid)
+          .delete(),
+      ]);
+    }
+  );
+}
+
+export async function assignUnassignedCampaignsToAccount(uid, accountId) {
+  const campaigns = await dbLocal.campaigns
+    .filter((campaign) => campaign.uid === uid && !campaign.accountId)
+    .toArray();
+
+  if (!campaigns.length) return;
+
+  const now = Date.now();
+  await dbLocal.campaigns.bulkPut(
+    campaigns.map((campaign) => ({
+      ...campaign,
+      accountId,
+      updatedAt: now,
+      clientUpdatedAt: now,
+      dirty: true,
+    }))
+  );
+
+  await syncPendingChanges(uid);
 }
 
 function normalizeCampaign(raw) {
@@ -124,6 +316,32 @@ export async function initialSync(uid) {
       }
     }
   );
+
+  for (const collectionName of ACCOUNT_COLLECTIONS) {
+    const [remoteSnap, localRows] = await Promise.all([
+      getDocs(collection(db, "users", uid, collectionName)),
+      dbLocal[collectionName].where("uid").equals(uid).toArray(),
+    ]);
+  
+    const dirtyIds = new Set(
+      localRows.filter((row) => row.dirty).map((row) => row.id)
+    );
+  
+    const rowsToPut = remoteSnap.docs
+      .map((remoteDoc) =>
+        normalizeAccountRecord({
+          ...remoteDoc.data(),
+          id: remoteDoc.id,
+          uid,
+          dirty: false,
+        })
+      )
+      .filter((row) => !dirtyIds.has(row.id));
+  
+    if (rowsToPut.length) {
+      await dbLocal[collectionName].bulkPut(rowsToPut);
+    }
+  }
 }
 
 /* -----------------------
@@ -233,6 +451,42 @@ export function subscribeToLegs(uid) {
   );
 }
 
+function subscribeToAccountCollection(uid, collectionName) {
+  const table = dbLocal[collectionName];
+  const q = query(collection(db, "users", uid, collectionName));
+
+  return onSnapshot(q, async (snap) => {
+    const changes = snap.docChanges();
+    if (!changes.length) return;
+
+    await dbLocal.transaction("rw", table, async () => {
+      const ids = changes.map((change) => change.doc.id);
+      const localRecords = await table.bulkGet(ids);
+      const recordsToPut = [];
+      const idsToDelete = [];
+
+      changes.forEach((change, index) => {
+        if (localRecords[index]?.dirty) return;
+
+        if (change.type === "added" || change.type === "modified") {
+          recordsToPut.push(
+            normalizeAccountRecord({
+              ...change.doc.data(),
+              id: change.doc.id,
+              dirty: false,
+            })
+          );
+        } else if (change.type === "removed") {
+          idsToDelete.push(change.doc.id);
+        }
+      });
+
+      if (recordsToPut.length) await table.bulkPut(recordsToPut);
+      if (idsToDelete.length) await table.bulkDelete(idsToDelete);
+    });
+  });
+}
+
 export async function ensureInitialSync(uid) {
   if (!uid) return;
 
@@ -258,6 +512,10 @@ export function startBackgroundSync(uid) {
   const unsubscribeCampaigns = subscribeToCampaigns(uid);
   const unsubscribeLegs = subscribeToLegs(uid);
 
+  const accountUnsubscribers = ACCOUNT_COLLECTIONS.map((name) =>
+    subscribeToAccountCollection(uid, name)
+  );
+
   const syncOnReconnect = async () => {
     try {
       await syncPendingChanges(uid);
@@ -271,6 +529,7 @@ export function startBackgroundSync(uid) {
   return () => {
     unsubscribeCampaigns();
     unsubscribeLegs();
+    accountUnsubscribers.forEach((unsubscribe) => unsubscribe());
     window.removeEventListener("online", syncOnReconnect);
   };
 }
@@ -293,12 +552,25 @@ export async function createCampaign(uid, fields) {
     ? fields.name
     : `${fields.ticker || "UNKNOWN"} #${count + 1}`;
 
+  const accounts = await dbLocal.accounts
+    .where("uid")
+    .equals(uid)
+    .toArray();
+
+  const accountId =
+    fields.accountId ?? getDefaultAccountId(uid, accounts);
+
+  if (!accountId) {
+    throw new Error("Create a default account before creating campaigns.");
+  }
+
   const campaign = normalizeCampaign({
     id,
     uid,
     status: "open",
     ...fields,
     name: autoName,
+    accountId,
     openDate: fields.openDate ?? now,
     updatedAt: now,
     clientUpdatedAt: now,
@@ -642,11 +914,12 @@ export async function rollLeg(uid, sourceLeg, rollFields = {}) {
 ------------------------ */
 
 async function flushDirtyBatch(uid, collectionName, rows) {
-  if (!rows.length) return;
+  const ownedRows = rows.filter((row) => row.uid === uid);
+  if (!ownedRows.length) return;
 
-  for (let i = 0; i < rows.length; i += 400) {
+  for (let i = 0; i < ownedRows.length; i += 400) {
     const batch = writeBatch(db);
-    const chunk = rows.slice(i, i + 400);
+    const chunk = ownedRows.slice(i, i + 400);
 
     let mutationCount = 0;
 
@@ -676,7 +949,7 @@ async function flushDirtyBatch(uid, collectionName, rows) {
 
     for (const row of chunk) {
       const latest = await dbLocal[collectionName].get(row.id);
-      if (latest && latest.dirty) {
+      if (latest?.uid === uid && latest.dirty) {
         await dbLocal[collectionName].update(row.id, {
           dirty: false,
           serverUpdatedAt: Date.now(),
@@ -690,21 +963,32 @@ export async function forceSync(uid) {
   if (!uid) return;
 
   const dirtyCampaigns = await dbLocal.campaigns
-    .filter((c) => c.dirty === true)
+    .filter((row) => row.uid === uid && row.dirty === true)
     .toArray();
 
   const dirtyLegs = await dbLocal.legs
-    .filter((l) => l.dirty === true)
+    .filter((row) => row.uid === uid && row.dirty === true)
     .toArray();
 
   await flushDirtyBatch(uid, "campaigns", dirtyCampaigns);
   await flushDirtyBatch(uid, "legs", dirtyLegs);
+
+  for (const collectionName of ACCOUNT_COLLECTIONS) {
+    const dirtyRows = await dbLocal[collectionName]
+      .filter((row) => row.uid === uid && row.dirty === true)
+      .toArray();
+  
+    await flushDirtyBatch(uid, collectionName, dirtyRows);
+  }
 }
 
 export async function deleteAllRemote(uid) {
   const collectionsToClear = [
     `users/${uid}/campaigns`,
-    `users/${uid}/legs`
+    `users/${uid}/legs`,
+    `users/${uid}/accounts`,
+    `users/${uid}/cashTransactions`,
+    `users/${uid}/accountSnapshots`
   ];
 
   for (const collectionPath of collectionsToClear) {

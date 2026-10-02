@@ -19,10 +19,7 @@ export default function FilterBar({
     setEndDateFilter
 }) {
     const [showDateFilters, setShowDateFilters] = useState(false);
-    const [activeDatePreset, setActiveDatePreset] = useState(
-        startDateFilter || endDateFilter ? "custom" : "all"
-    );
-
+    const [activeDatePreset, setActiveDatePreset] = useState("ytd");
     const toISODateStr = (date) => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, "0");

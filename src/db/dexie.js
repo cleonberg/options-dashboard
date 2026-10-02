@@ -5,13 +5,16 @@ import Dexie from "dexie";
 if (!globalThis.__dbLocal) {
   const db = new Dexie("optionsDashboard");
 
-  db.version(3).stores({
-    campaigns: "id, updatedAt, dirty, deleted, clientUpdatedAt, serverUpdatedAt",
-    legs: "id, campaignId, updatedAt, dirty, deleted, clientUpdatedAt, serverUpdatedAt",
+  db.version(5).stores({
+    campaigns: "id, uid, accountId, updatedAt, dirty, deleted, clientUpdatedAt, serverUpdatedAt",
+    legs: "id, uid, campaignId, updatedAt, dirty, deleted, clientUpdatedAt, serverUpdatedAt",
     deletionJobs: "++id, uid, type, targetId, createdAt, attempts, nextAttemptAt, lastError",
-    meta: "key"
+    meta: "key",
+    accounts: "id, uid, updatedAt, dirty, clientUpdatedAt, serverUpdatedAt",
+    cashTransactions: "id, uid, accountId, date, updatedAt, dirty, clientUpdatedAt, serverUpdatedAt",
+    accountSnapshots: "id, uid, accountId, date, updatedAt, dirty, clientUpdatedAt, serverUpdatedAt"
   });
-
+  
   db.on('populate', () => {
     console.log("[TRACE] Dexie POPULATE triggered");
   });

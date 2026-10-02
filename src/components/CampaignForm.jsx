@@ -1,8 +1,23 @@
 // CampaignForm.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
-export default function CampaignForm({ initialData, onSubmit, onCancel }) {
+export default function CampaignForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  accounts = [],
+  defaultAccountId = "",
+}) {
   const [ticker, setTicker] = useState(initialData?.ticker || "");
+  const [accountId, setAccountId] = useState(
+    initialData?.accountId || defaultAccountId
+  );
+
+  useEffect(() => {
+    if (!initialData?.accountId && defaultAccountId) {
+      setAccountId(defaultAccountId);
+    }
+  }, [defaultAccountId, initialData?.accountId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -15,6 +30,7 @@ export default function CampaignForm({ initialData, onSubmit, onCancel }) {
     // Pass the data back to the parent
     onSubmit({
       ticker: ticker.toUpperCase(),
+      accountId,
     });
   };
 
@@ -44,6 +60,18 @@ export default function CampaignForm({ initialData, onSubmit, onCancel }) {
             placeholder="e.g. AAPL"
             style={{ padding: "6px", width: "100%", maxWidth: "200px" }}
           />
+          <select
+            className="input"
+            value={accountId}
+            onChange={(event) => setAccountId(event.target.value)}
+            required
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}{account.isDefault ? " (Default)" : ""}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>

@@ -36,10 +36,11 @@ export function fmtWholeDollars(x) {
 }
 
 export function cashClass(x) {
-  if (x == null) return "";
-  if (x > 0) return "cash-pos";
-  if (x < 0) return "cash-neg";
-  return "cash-zero";
+  return "";
+  // if (x == null) return "";
+  // if (x > 0) return "cash-pos";
+  // if (x < 0) return "cash-neg";
+  // return "cash-zero";
 }
 
 /* -------------------------------------------------------

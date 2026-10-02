@@ -72,6 +72,8 @@ export default function DashboardTab({
   uid,
   campaigns = [],
   legs = [],
+  accounts = [],
+  defaultAccountId = "",
   summary,
   onSelectCampaign,
   onAddCampaign,
@@ -432,7 +434,7 @@ export default function DashboardTab({
           </div>
 
           <div className="summary-card">
-            <h3 className="summary-card-title">Capital Efficiency</h3>
+            <h3 className="summary-card-title">Active Positions</h3>
             <div className="summary-card-metrics summary-card-metrics--three">
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Total Margin</div>
@@ -642,6 +644,8 @@ export default function DashboardTab({
           <div className="add-leg-content">
             <div style={{ paddingBottom: "24px" }}>              
               <CampaignForm
+                accounts={accounts}
+                defaultAccountId={defaultAccountId}
                 onSubmit={(campaignData) => {
                   onAddCampaign?.(campaignData);
                   setIsAddingCampaign(false);

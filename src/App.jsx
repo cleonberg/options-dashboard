@@ -8,6 +8,7 @@ import FilterBar from "./components/FilterBar.jsx";
 const DashboardTab = lazy(() => import("./components/DashboardTab.jsx"));
 const AllLegsTab = lazy(() => import("./components/AllLegsTab.jsx"));
 const CampaignsTab = lazy(() => import("./components/CampaignsTab.jsx"));
+const AccountTab = lazy(() => import("./components/AccountTab.jsx"));
 const SettingsTab = lazy(() => import("./components/SettingsTab.jsx"));
 
 import { startAuth } from "./auth.js";
@@ -16,23 +17,62 @@ import {
   startBackgroundSync,
   syncPendingChanges,
   createCampaign,
+  getDefaultAccountId,
 } from "./sync/sync.js";
 
 import { dbLocal } from "./db/dexie.js";
 import "./styles/styles.css";
+
+function toISODateStr(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 export default function App() {
   const [uid, setUid] = useState(null);
 
   const campaigns = useLiveQuery(() => dbLocal.getAllCampaigns(), []) || [];
   const legs = useLiveQuery(() => dbLocal.getAllLegs(), []) || [];
+ 
+  const accounts = useLiveQuery(
+    () => uid ? dbLocal.accounts.where("uid").equals(uid).toArray() : [],
+    [uid]
+  ) || [];
+
+  const cashTransactions = useLiveQuery(
+    () => uid ? dbLocal.cashTransactions.where("uid").equals(uid).toArray() : [],
+    [uid]
+  ) || [];
+
+  const accountSnapshots = useLiveQuery(
+    () => uid ? dbLocal.accountSnapshots.where("uid").equals(uid).toArray() : [],
+    [uid]
+  ) || [];
+
+  const defaultAccountId = uid ? getDefaultAccountId(uid, accounts) : null;
 
   const dirtyCount =
     useLiveQuery(async () => {
-      const c = await dbLocal.campaigns.filter((c) => c.dirty === true).count();
-      const l = await dbLocal.legs.filter((l) => l.dirty === true).count();
-      return c + l;
-    }, []) || 0;
+      if (!uid) return 0;
+
+      const tables = [
+        dbLocal.campaigns,
+        dbLocal.legs,
+        dbLocal.accounts,
+        dbLocal.cashTransactions,
+        dbLocal.accountSnapshots,
+      ];
+
+      const counts = await Promise.all(
+        tables.map((table) =>
+          table.filter((row) => row.uid === uid && row.dirty === true).count()
+        )
+      );
+
+      return counts.reduce((total, count) => total + count, 0);
+    }, [uid]) || 0;
 
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
@@ -41,8 +81,12 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDateFilter, setStartDateFilter] = useState("2026-01-01");
-  const [endDateFilter, setEndDateFilter] = useState("");
+  const [startDateFilter, setStartDateFilter] = useState(() =>
+    `${new Date().getFullYear()}-01-01`
+  );
+  const [endDateFilter, setEndDateFilter] = useState(() =>
+    toISODateStr(new Date())
+  );
 
   const dashboardSummary = useMemo(
     () => computeDashboardSummary(campaigns, legs),
@@ -135,6 +179,8 @@ export default function App() {
             summary={dashboardSummary}
             campaigns={campaigns}
             legs={legs}
+            accounts={accounts}
+            defaultAccountId={defaultAccountId}
             onSelectCampaign={handleSelectCampaign}
             onAddCampaign={handleAddCampaign}
             searchTerm={searchTerm}
@@ -160,9 +206,22 @@ export default function App() {
           <CampaignsTab
             campaigns={campaigns}
             legs={legs}
+            accounts={accounts}
+            defaultAccountId={defaultAccountId}
             selectedCampaignId={selectedCampaignId}
             setSelectedCampaignId={setSelectedCampaignId}
             uid={uid}
+          />
+        );
+
+      case "account":
+        return (
+          <AccountTab
+            uid={uid}
+            accounts={accounts}
+            defaultAccountId={defaultAccountId}
+            cashTransactions={cashTransactions}
+            accountSnapshots={accountSnapshots}
           />
         );
 

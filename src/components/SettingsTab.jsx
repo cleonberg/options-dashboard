@@ -455,27 +455,51 @@ async function handleUndelete(campaign) {
   }
 
   async function handleDeleteAll() {
-    if (!window.confirm("Delete ALL campaigns and legs from LOCAL and FIRESTORE?")) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("You must be logged in to delete your data.");
+      return;
+    }
 
-    const typed = window.prompt("This action is permanent.\n\nType DELETE to confirm.");
+    const message =
+      "Permanently delete all your campaigns, legs, account profile, " +
+      "cash adjustments, and account snapshots from this device and Firestore?";
 
-    if (typed !== "DELETE") {
+    if (!window.confirm(message)) return;
+
+    if (window.prompt("This action is permanent.\n\nType DELETE to confirm.") !== "DELETE") {
       alert("Deletion cancelled.");
       return;
     }
 
-    await dbLocal.campaigns.clear();
-    await dbLocal.legs.clear();
-
-    const uid = auth.currentUser?.uid;
-    if (uid) {
+    try {
+      // Delete remotely first. If this fails, retain local data so the user can retry.
       await deleteAllRemote(uid);
-    } else {
-      alert("Warning: Not signed in — remote delete skipped.");
-    }
 
-    if (typeof reloadAll === "function") reloadAll();
-    alert("All campaigns and legs deleted.");
+      await dbLocal.transaction(
+        "rw",
+        dbLocal.campaigns,
+        dbLocal.legs,
+        dbLocal.accounts,
+        dbLocal.cashTransactions,
+        dbLocal.accountSnapshots,
+        async () => {
+          await Promise.all([
+            dbLocal.campaigns.filter((row) => row.uid === uid).delete(),
+            dbLocal.legs.filter((row) => row.uid === uid).delete(),
+            dbLocal.accounts.where("uid").equals(uid).delete(),
+            dbLocal.cashTransactions.where("uid").equals(uid).delete(),
+            dbLocal.accountSnapshots.where("uid").equals(uid).delete(),
+          ]);
+        }
+      );
+
+      if (typeof reloadAll === "function") reloadAll();
+      alert("All your campaigns, legs, and account data were deleted.");
+    } catch (err) {
+      console.error("Failed to delete all user data:", err);
+      alert("Deletion did not complete. Please retry.");
+    }
   }
 
   // ---------- Backup / Restore DB ----------
