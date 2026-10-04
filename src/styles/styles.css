@@ -130,6 +130,34 @@ h2, h3 {
   transition: all 0.2s ease;
 }
 
+.dropdown-menu .settings-menu-item {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px 8px;
+  }
+
+  .tab-button {
+    min-width: 0;
+    padding: 6px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .tab-button[data-tab-id="settings"] {
+    display: none;
+  }
+
+  .dropdown-menu .settings-menu-item {
+    display: block;
+  }
+}
+
 .tab-button.active {
   background: var(--primary);
   color: #ffffff;
@@ -1094,5 +1122,178 @@ button.secondary:hover {
   .campaign-table th {
     font-size: 10px;
     padding: 6px 3px;
+  }
+}
+
+.account-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.account-picker {
+  max-width: 320px;
+}
+
+.account-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.account-summary-grid > .summary-card {
+  align-items: flex-start;
+  min-width: 0;
+  padding: 12px;
+  text-align: left;
+}
+
+.account-summary-grid .summary-card-title {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.account-summary-value {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-overview-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.account-overview {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.account-overview h3 {
+  margin: 0 0 10px;
+}
+
+.account-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.account-overview-metrics dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.account-overview-metrics dd {
+  margin: 3px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.account-stress-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.account-position-list {
+  margin-top: 10px;
+}
+
+.account-position-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+}
+
+.account-position-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.account-position-header > :last-child {
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .account-summary-grid,
+  .account-overview-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .account-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .account-picker {
+    max-width: none;
+  }
+
+  .account-summary-grid,
+  .account-overview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-position-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .account-position-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.cash-adjustments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cash-adjustments-header h3 {
+  margin: 0;
+}
+
+.cash-adjustment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-color);
+}
+
+@media (max-width: 600px) {
+  .cash-adjustment-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }

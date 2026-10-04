@@ -5,6 +5,7 @@ import {
 
 const DEFAULT_MARGIN_RATIO = 0.3;
 const MARGIN_RATIO_BY_TICKER = new Map([
+  ["GOOG", 0.25],
   ["SOXL", 0.6],
 ]);
 
@@ -648,6 +649,7 @@ function normalizeLegForMargin(leg, index) {
     campaignId,
     type,
     right,
+    ticker,
     side,
     spreadKey,
     openDate,
@@ -877,6 +879,227 @@ export function computeMarginHistorySeries(
   }
 
   return output;
+}
+
+function readNonnegativePrice(value) {
+  if (value == null || value === "") return null;
+  const price = Number(value);
+  return Number.isFinite(price) && price >= 0 ? price : null;
+}
+
+function optionIntrinsic(right, spot, strike) {
+  return right === "put"
+    ? Math.max(strike - spot, 0)
+    : Math.max(spot - strike, 0);
+}
+
+export function computeAccountMarginEstimate(
+  legs = [],
+  {
+    asOfDate = new Date(),
+    positionMarks = {},
+    underlyingPrices = {},
+    shockPercent = 0,
+    minimumMarginRatio = 0.10,
+  } = {}
+) {
+  const day = getCalendarDay(asOfDate);
+  const shock = Number(shockPercent);
+  const minimumRate = Number(minimumMarginRatio);
+
+  if (
+    !day ||
+    !Number.isFinite(shock) ||
+    shock <= -100 ||
+    !Number.isFinite(minimumRate) ||
+    minimumRate < 0
+  ) {
+    return { total: null, complete: false, positions: [] };
+  }
+
+  const activeLegs = buildMarginRuntime(legs).normalized.filter((leg) =>
+    isLegActiveOnDay(leg, day)
+  );
+
+  const positions = activeLegs.map((leg) => ({
+    legId: leg.legKey,
+    leg,
+    requiredMargin: 0,
+    status: "Estimated",
+  }));
+
+  const positionByKey = new Map(positions.map((position) => [
+    position.leg.legKey,
+    position,
+  ]));
+  const matchedQty = new Map(activeLegs.map((leg) => [leg.legKey, 0]));
+  const spreadMargin = new Map(activeLegs.map((leg) => [leg.legKey, 0]));
+  const ambiguous = new Set();
+  const spreadGroups = new Map();
+
+  for (const leg of activeLegs) {
+    if (!leg.spreadKey) continue;
+    const group = spreadGroups.get(leg.spreadKey) || [];
+    group.push(leg);
+    spreadGroups.set(leg.spreadKey, group);
+  }
+
+  for (const group of spreadGroups.values()) {
+    if (group.length > 2) {
+      const hasBuy = group.some((leg) => leg.side === "buy");
+      const hasSell = group.some((leg) => leg.side === "sell");
+      if (hasBuy && hasSell) {
+        group.forEach((leg) => ambiguous.add(leg.legKey));
+      }
+      continue;
+    }
+
+    if (group.length !== 2 || group[0].side === group[1].side) continue;
+
+    const [first, second] = group;
+    if (
+      !Number.isFinite(first.strike) ||
+      !Number.isFinite(second.strike) ||
+      first.strike <= 0 ||
+      second.strike <= 0 ||
+      first.strike === second.strike
+    ) {
+      continue;
+    }
+
+    const quantity = Math.min(first.qtyAbs, second.qtyAbs);
+    if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+    const shortLeg = first.side === "sell" ? first : second;
+    const requirement = Math.abs(first.strike - second.strike) * 100 * quantity;
+
+    spreadMargin.set(
+      shortLeg.legKey,
+      spreadMargin.get(shortLeg.legKey) + requirement
+    );
+    matchedQty.set(first.legKey, quantity);
+    matchedQty.set(second.legKey, quantity);
+  }
+
+  for (const position of positions) {
+    const leg = position.leg;
+    const source = leg.source;
+    const quantity = leg.qtyAbs;
+    const spreadPart = spreadMargin.get(leg.legKey) || 0;
+
+    if (ambiguous.has(leg.legKey)) {
+      position.requiredMargin = null;
+      position.status = "Ambiguous spread";
+      continue;
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      position.requiredMargin = null;
+      position.status = "Invalid quantity";
+      continue;
+    }
+
+    const remaining = quantity - (matchedQty.get(leg.legKey) || 0);
+    if (remaining <= 0) {
+      position.requiredMargin = spreadPart;
+      position.status = "Defined-risk spread";
+      continue;
+    }
+
+    const type = leg.type;
+    const isOption = type === "buy_call" || type === "buy_put" ||
+      type === "sell_call" || type === "sell_put";
+    const isStock = type === "buy_stock" || type === "sell_stock";
+
+    if (!isOption && !isStock) {
+      position.requiredMargin = null;
+      position.status = "Unsupported position type";
+      continue;
+    }
+
+    const ratio = getMarginRatio(source);
+    const multiplier = 1 + shock / 100;
+    let standalone = null;
+
+    if (isStock) {
+      const stockMark = readNonnegativePrice(positionMarks[leg.legKey]);
+      if (stockMark != null) {
+        standalone = ratio * stockMark * multiplier * remaining;
+      } else {
+        position.status = "Missing stock price";
+      }
+    } else {
+      const optionMark = readNonnegativePrice(positionMarks[leg.legKey]);
+      const ticker = String(leg.ticker || "").trim().toUpperCase();
+      const spot = readNonnegativePrice(underlyingPrices[ticker]);
+      const strike = leg.strike;
+      const hasUnderlying =
+        spot != null && Number.isFinite(strike) && strike > 0;
+
+      if (shock !== 0 && !hasUnderlying) {
+        position.status = "Missing underlying price for scenario";
+      } else if (optionMark == null && !hasUnderlying) {
+        position.status = "Missing option premium or underlying price";
+      } else {
+        const scenarioSpot = hasUnderlying ? spot * multiplier : null;
+        let scenarioPremium = optionMark;
+
+        if (hasUnderlying) {
+          const currentIntrinsic = optionIntrinsic(leg.right, spot, strike);
+          const shockedIntrinsic = optionIntrinsic(
+            leg.right,
+            scenarioSpot,
+            strike
+          );
+          const extrinsic =
+            optionMark == null
+              ? 0
+              : Math.max(0, optionMark - currentIntrinsic);
+
+          scenarioPremium = shockedIntrinsic + extrinsic;
+        }
+
+        if (type.startsWith("buy_")) {
+          standalone = scenarioPremium * 100 * remaining;
+        } else if (scenarioSpot != null) {
+          const outOfMoney = leg.right === "put"
+            ? Math.max(scenarioSpot - strike, 0)
+            : Math.max(strike - scenarioSpot, 0);
+          const floorReference = leg.right === "put" ? strike : scenarioSpot;
+
+          const perShareRequirement =
+            scenarioPremium +
+            Math.max(
+              ratio * scenarioSpot - outOfMoney,
+              minimumRate * floorReference
+            );
+
+          standalone = perShareRequirement * 100 * remaining;
+        } else {
+          position.status = "Missing underlying price";
+        }
+      }
+    }
+
+    if (standalone != null && Number.isFinite(standalone)) {
+      position.requiredMargin = spreadPart + standalone;
+      if (spreadPart > 0) position.status = "Spread plus uncovered quantity";
+    } else {
+      position.requiredMargin = null;
+    }
+  }
+
+  const complete = positions.every((position) =>
+    Number.isFinite(position.requiredMargin)
+  );
+
+  return {
+    total: complete
+      ? positions.reduce((sum, position) => sum + position.requiredMargin, 0)
+      : null,
+    complete,
+    positions: positions.map(({ leg, ...position }) => position),
+  };
 }
 
 export function computeAROM(pl, margin, daysHeld) {

@@ -11,7 +11,8 @@ export default function Header({
     syncStatus,
     lastSync,
     dirtyCount,
-    syncNow
+    syncNow,
+    setActiveTab,
 }) {
     const [user, setUser] = useState(auth.currentUser);
     const [open, setOpen] = useState(false);
@@ -111,6 +112,17 @@ export default function Header({
                                     Sync Now
                                 </button>
                             </div>
+
+                            <button
+                              type="button"
+                              className="settings-menu-item"
+                              onClick={() => {
+                                setActiveTab("settings");
+                                setOpen(false);
+                              }}
+                            >
+                              Settings
+                            </button>
 
                             {!user && (
                                 <>

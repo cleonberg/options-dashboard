@@ -87,6 +87,31 @@ export async function saveAccountRecord(uid, collectionName, fields) {
   return id;
 }
 
+export async function deleteCashTransaction(uid, id) {
+  if (!uid || !id) throw new Error("User and transaction are required.");
+
+  const existing = await dbLocal.cashTransactions.get(id);
+  if (!existing || existing.uid !== uid) {
+    throw new Error("Cash transaction not found.");
+  }
+
+  const now = Date.now();
+  await dbLocal.cashTransactions.put({
+    ...existing,
+    deleted: true,
+    deletedAt: now,
+    updatedAt: now,
+    clientUpdatedAt: now,
+    dirty: true,
+  });
+
+  try {
+    await syncPendingChanges(uid);
+  } catch (error) {
+    console.warn("Transaction deleted locally; sync will retry later.", error);
+  }
+}
+
 export async function createAccount(uid, fields) {
   const accounts = await dbLocal.accounts.where("uid").equals(uid).toArray();
   const id = crypto.randomUUID();
@@ -200,6 +225,8 @@ export async function deleteAccount(uid, accountId) {
     }
   );
 }
+
+
 
 export async function assignUnassignedCampaignsToAccount(uid, accountId) {
   const campaigns = await dbLocal.campaigns

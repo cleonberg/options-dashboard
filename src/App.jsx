@@ -220,6 +220,8 @@ export default function App() {
             uid={uid}
             accounts={accounts}
             defaultAccountId={defaultAccountId}
+            campaigns={campaigns}
+            legs={legs}
             cashTransactions={cashTransactions}
             accountSnapshots={accountSnapshots}
           />
@@ -240,6 +242,7 @@ export default function App() {
         lastSync={lastSync}
         dirtyCount={dirtyCount}
         syncNow={syncNow}
+        setActiveTab={setActiveTab}
       />
 
       <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />

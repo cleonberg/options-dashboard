@@ -14,6 +14,7 @@ export default function TabBar({ activeTab, setActiveTab }) {
       {tabs.map(t => (
         <button
           key={t.id}
+          data-tab-id={t.id}
           className={`tab-button ${activeTab === t.id ? "active" : ""}`}
           onClick={() => setActiveTab(t.id)}
         >
