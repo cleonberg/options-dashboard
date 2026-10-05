@@ -1,0 +1,1 @@
+import{X as e,q as t}from"./index-BMjCQobo.js";import{M as n,t as r}from"./CartesianChart-D3fwwcrl.js";var i=e(t()),a=[`axis`],o=(0,i.forwardRef)((e,t)=>i.createElement(r,{chartName:`LineChart`,defaultTooltipEventType:`axis`,validateTooltipEventTypes:a,tooltipPayloadSearcher:n,categoricalChartProps:e,ref:t}));export{o as t};
