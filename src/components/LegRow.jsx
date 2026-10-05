@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import { fmt, cashClass, computeLegPL, getCampaignLabel } from "../logic/logic.js";
 import { editLeg, reopenLeg, rollLeg, deleteLeg } from "../sync/sync.js";
 
@@ -21,8 +21,16 @@ const formatDate = (dateVal) => {
   return getLocalDateStr(d);
 };
 
-export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadAll }) {
-  const [expanded, setExpanded] = useState(false);
+export default function LegRow({
+  leg,
+  campaigns = [],
+  allLegs = [],
+  uid,
+  reloadAll,
+  expanded,
+  onToggle,
+  onActionComplete,
+}) {
   const [activeAction, setActiveAction] = useState(null);
 
   const todayStr = getLocalDateStr();
@@ -41,10 +49,6 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
 
   const pl = computeLegPL(leg);
   const isOption = leg.type ? !leg.type.includes("stock") : true;
-
-  function toggle() {
-    setExpanded(!expanded);
-  }
 
   function update(field, value) {
     editLeg(uid, { ...leg, [field]: value });
@@ -104,6 +108,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
       closePrice: closePrice === "" ? null : Number(closePrice),
     });
     setActiveAction(null);
+    if (onActionComplete) onActionComplete();
     if (reloadAll) reloadAll();
   };
 
@@ -119,6 +124,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
       expiry: isOption ? rollNewExpiry : formatDate(leg.expiry),
     });
     setActiveAction(null);
+    if (onActionComplete) onActionComplete();
     if (reloadAll) reloadAll();
   };
 
@@ -126,7 +132,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
     <div className="leg-row">
       <div
         className="leg-summary"
-        onClick={toggle}
+        onClick={onToggle}
         style={{
           cursor: "pointer",
           display: "flex",
@@ -192,94 +198,96 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
 
       {expanded && (
         <div className="leg-details">
-          {campaignOptions.length > 0 && (
+          <div className="leg-edit-fields">
+            {campaignOptions.length > 0 && (
+              <EditableField
+                label="Campaign"
+                value={leg.campaignId}
+                type="select"
+                options={campaignOptions}
+                onChange={(v) => update("campaignId", v)}
+              />
+            )}
+
+            <EditableField label="Ticker" value={leg.ticker} onChange={(v) => update("ticker", v)} />
+
             <EditableField
-              label="Campaign"
-              value={leg.campaignId}
+              label="Type"
+              value={leg.type}
               type="select"
-              options={campaignOptions}
-              onChange={(v) => update("campaignId", v)}
+              options={[
+                { value: "sell_put", label: "Short Put" },
+                { value: "buy_put", label: "Long Put" },
+                { value: "sell_call", label: "Short Call" },
+                { value: "buy_call", label: "Long Call" },
+                { value: "buy_stock", label: "Long Stock" },
+                { value: "sell_stock", label: "Short Stock" },
+              ]}
+              onChange={(v) => update("type", v)}
             />
-          )}
 
-          <EditableField label="Ticker" value={leg.ticker} onChange={(v) => update("ticker", v)} />
+            <EditableField
+              label="Qty"
+              value={leg.qty}
+              type="number"
+              onChange={(v) => update("qty", v === "" ? null : Number(v))}
+            />
 
-          <EditableField
-            label="Type"
-            value={leg.type}
-            type="select"
-            options={[
-              { value: "sell_put", label: "Short Put" },
-              { value: "buy_put", label: "Long Put" },
-              { value: "sell_call", label: "Short Call" },
-              { value: "buy_call", label: "Long Call" },
-              { value: "buy_stock", label: "Long Stock" },
-              { value: "sell_stock", label: "Short Stock" },
-            ]}
-            onChange={(v) => update("type", v)}
-          />
+            {isOption && (
+              <>
+                <EditableField
+                  label="Strike"
+                  value={leg.strike}
+                  type="number"
+                  onChange={(v) => update("strike", v === "" ? null : Number(v))}
+                />
 
-          <EditableField
-            label="Qty"
-            value={leg.qty}
-            type="number"
-            onChange={(v) => update("qty", v === "" ? null : Number(v))}
-          />
+                <EditableField
+                  label="Expiry"
+                  value={formatDate(leg.expiry)} // FIXED: Formatted expiry for input[type="date"]
+                  type="date"
+                  onChange={(v) => update("expiry", v)}
+                />
+              </>
+            )}
 
-          {isOption && (
-            <>
-              <EditableField
-                label="Strike"
-                value={leg.strike}
-                type="number"
-                onChange={(v) => update("strike", v === "" ? null : Number(v))}
-              />
+            <EditableField
+              label="Open Date"
+              value={formatDate(leg.openDate)}
+              type="date"
+              onChange={(v) => update("openDate", v)}
+            />
 
-              <EditableField
-                label="Expiry"
-                value={formatDate(leg.expiry)} // FIXED: Formatted expiry for input[type="date"]
-                type="date"
-                onChange={(v) => update("expiry", v)}
-              />
-            </>
-          )}
+            <EditableField
+              label="Open Price"
+              value={leg.openPrice}
+              type="number"
+              onChange={(v) => update("openPrice", v === "" ? null : Number(v))}
+            />
 
-          <EditableField
-            label="Open Date"
-            value={formatDate(leg.openDate)}
-            type="date"
-            onChange={(v) => update("openDate", v)}
-          />
+            {!leg.isOpen && (
+              <>
+                <EditableField
+                  label="Close Date"
+                  value={formatDate(leg.closeDate)}
+                  type="date"
+                  onChange={(v) => update("closeDate", v || null)}
+                />
 
-          <EditableField
-            label="Open Price"
-            value={leg.openPrice}
-            type="number"
-            onChange={(v) => update("openPrice", v === "" ? null : Number(v))}
-          />
+                <EditableField
+                  label="Close Price"
+                  value={leg.closePrice ?? ""}
+                  type="number"
+                  onChange={(v) => update("closePrice", v === "" ? null : Number(v))}
+                />
+              </>
+            )}
 
-          {!leg.isOpen && (
-            <>
-              <EditableField
-                label="Close Date"
-                value={formatDate(leg.closeDate)}
-                type="date"
-                onChange={(v) => update("closeDate", v || null)}
-              />
-
-              <EditableField
-                label="Close Price"
-                value={leg.closePrice ?? ""}
-                type="number"
-                onChange={(v) => update("closePrice", v === "" ? null : Number(v))}
-              />
-            </>
-          )}
-
-          <EditableField label="Notes" value={leg.notes} type="textarea" onChange={(v) => update("notes", v)} />
+            <EditableField label="Notes" value={leg.notes} type="textarea" onChange={(v) => update("notes", v)} />
+          </div>
 
           {activeAction === "close" && (
-            <form onSubmit={handleConfirmClose} className="action-form">
+            <form onSubmit={handleConfirmClose} className="action-form close-action-form">
               <h4>Close Leg</h4>
               <div className="action-form-grid">
                 <div>
@@ -315,7 +323,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
           )}
 
           {activeAction === "roll" && (
-            <form onSubmit={handleConfirmRoll} className="action-form">
+            <form onSubmit={handleConfirmRoll} className="action-form roll-action-form">
               <h4>Roll Leg</h4>
               <div className="action-form-grid">
                 <div>
@@ -432,6 +440,7 @@ export default function LegRow({ leg, campaigns = [], allLegs = [], uid, reloadA
 
 function EditableField({ label, value, type = "text", options = [], onChange }) {
   const [localValue, setLocalValue] = useState(value ?? "");
+  const inputId = useId();
 
   useEffect(() => {
     setLocalValue(value ?? "");
@@ -452,12 +461,17 @@ function EditableField({ label, value, type = "text", options = [], onChange }) 
   }
 
   return (
-    <div className="detail-row">
-      <label>{label}</label>
+    <div className={`detail-row${type === "textarea" ? " detail-row--textarea" : ""}`}>
+      <label htmlFor={inputId}>{label}</label>
       {type === "textarea" ? (
-        <textarea value={localValue} onChange={(e) => setLocalValue(e.target.value)} onBlur={handleBlur} />
+        <textarea
+          id={inputId}
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={handleBlur}
+        />
       ) : type === "select" ? (
-        <select value={localValue} onChange={handleSelectChange}>
+        <select id={inputId} value={localValue} onChange={handleSelectChange}>
           {options.map((opt) => {
             const isObj = typeof opt === "object" && opt !== null;
             const optVal = isObj ? opt.value : opt;
@@ -470,7 +484,13 @@ function EditableField({ label, value, type = "text", options = [], onChange }) 
           })}
         </select>
       ) : (
-        <input type={type} value={localValue} onChange={(e) => setLocalValue(e.target.value)} onBlur={handleBlur} />
+        <input
+          id={inputId}
+          type={type}
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={handleBlur}
+        />
       )}
     </div>
   );

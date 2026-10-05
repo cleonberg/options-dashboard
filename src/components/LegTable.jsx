@@ -6,6 +6,7 @@ import { computeLegPL } from "../logic/logic.js";
 export default function LegTable({ legs, campaigns = [], uid, reloadAll }) { 
   // Default sort: Open Date (ascending / oldest first)
   const [sortConfig, setSortConfig] = useState({ field: "openDate", direction: "asc" });
+  const [expandedLegId, setExpandedLegId] = useState(null);
 
   // Handle dropdown or toggle changes
   const handleFieldChange = (e) => {
@@ -112,14 +113,21 @@ export default function LegTable({ legs, campaigns = [], uid, reloadAll }) {
       {/* --- Render Sorted List --- */}
       <div className="leg-list"> 
         {sortedLegs.map(leg => ( 
-          <LegRow 
-            key={leg.id} 
-            leg={leg} 
+          <LegRow
+            key={leg.id}
+            leg={leg}
             campaigns={campaigns}
-            allLegs={legs} 
-            uid={uid} 
-            reloadAll={reloadAll} 
-          /> 
+            allLegs={legs}
+            uid={uid}
+            reloadAll={reloadAll}
+            expanded={expandedLegId === leg.id}
+            onToggle={() =>
+              setExpandedLegId((currentId) =>
+                currentId === leg.id ? null : leg.id
+              )
+            }
+            onActionComplete={() => setExpandedLegId(null)}
+          />
         ))} 
       </div> 
     </div> 

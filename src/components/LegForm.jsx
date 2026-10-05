@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 // Helper: Get local YYYY-MM-DD date without UTC timezone rollover
 const getLocalDateStr = (d = new Date()) => {
@@ -58,72 +58,94 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
   }
 
   return (
-    <form className="card" onSubmit={submit}>
+    <form className="card leg-form" onSubmit={submit}>
       <h3>Add Leg</h3>
 
-      <div className="form-row">
-        <select
-          className="input"
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-        >
-          <option value="sell_call">Sell Call</option>
-          <option value="sell_put">Sell Put</option>
-          <option value="buy_call">Buy Call</option>
-          <option value="buy_put">Buy Put</option>
-          <option value="buy_stock">Buy Stock</option>
-          <option value="sell_stock">Sell Stock</option>
-          <option value="assignment_put">Assignment (Put)</option>
-          <option value="assignment_call">Assignment (Call)</option>
-        </select>
+      <div className="leg-form-fields">
+        <div className="leg-form-field">
+          <label htmlFor="leg-type">Type</label>
+          <select
+            id="leg-type"
+            className="input"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+            <option value="sell_call">Sell Call</option>
+            <option value="sell_put">Sell Put</option>
+            <option value="buy_call">Buy Call</option>
+            <option value="buy_put">Buy Put</option>
+            <option value="buy_stock">Buy Stock</option>
+            <option value="sell_stock">Sell Stock</option>
+            <option value="assignment_put">Assignment (Put)</option>
+            <option value="assignment_call">Assignment (Call)</option>
+          </select>
+        </div>
 
-        <input
-          className="input"
-          placeholder="Qty"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-        />
+        <div className="leg-form-field">
+          <label htmlFor="leg-qty">Qty</label>
+          <input
+            id="leg-qty"
+            className="input"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+          />
+        </div>
 
         {isOption && (
           <>
-            <input
-              className="input"
-              placeholder="Strike"
-              value={strike}
-              onChange={(e) => setStrike(e.target.value)}
-            />
+            <div className="leg-form-field">
+              <label htmlFor="leg-strike">Strike</label>
+              <input
+                id="leg-strike"
+                className="input"
+                value={strike}
+                onChange={(e) => setStrike(e.target.value)}
+              />
+            </div>
 
-            <input
-              className="input"
-              type="date"
-              value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
-            />
+            <div className="leg-form-field">
+              <label htmlFor="leg-expiry">Expiry</label>
+              <input
+                id="leg-expiry"
+                className="input"
+                type="date"
+                value={expiry}
+                onChange={(e) => setExpiry(e.target.value)}
+              />
+            </div>
           </>
         )}
 
-        <input
-          className="input"
-          placeholder="Open price"
-          value={openPrice}
-          onChange={(e) => setOpenPrice(e.target.value)}
-        />
-      </div>
+        <div className="leg-form-field">
+          <label htmlFor="leg-open-price">Open price</label>
+          <input
+            id="leg-open-price"
+            className="input"
+            value={openPrice}
+            onChange={(e) => setOpenPrice(e.target.value)}
+          />
+        </div>
 
-      <div className="form-row">
-        <input
-          className="input"
-          type="date"
-          value={openDate}
-          onChange={(e) => setOpenDate(e.target.value)}
-        />
+        <div className="leg-form-field">
+          <label htmlFor="leg-open-date">Open date</label>
+          <input
+            id="leg-open-date"
+            className="input"
+            type="date"
+            value={openDate}
+            onChange={(e) => setOpenDate(e.target.value)}
+          />
+        </div>
 
-        <input
-          className="input"
-          placeholder="Notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
+        <div className="leg-form-field leg-form-field--notes">
+          <label htmlFor="leg-notes">Notes</label>
+          <input
+            id="leg-notes"
+            className="input"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </div>
       </div>
 
       <button type="submit">Add Leg</button>

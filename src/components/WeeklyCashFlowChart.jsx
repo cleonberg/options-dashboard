@@ -1,5 +1,5 @@
 // src/components/CashFlowChart.jsx
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { 
   fmtWholeDollars, 
   computeDailyCashFlowSeries,
@@ -29,6 +29,18 @@ export default function WeeklyCashFlowChart({
   startDateFilter = "",
   endDateFilter = "",
 }) {
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () => window.matchMedia("(max-width: 600px)").matches
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 600px)");
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", updateViewport);
+    return () => mediaQuery.removeEventListener("change", updateViewport);
+  }, []);
+
   const formatYAxis = (val) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -112,6 +124,8 @@ export default function WeeklyCashFlowChart({
   const averageWeekly = chartData.length
     ? chartData.reduce((sum, entry) => sum + entry.netCashFlow, 0) / chartData.length
     : 0;
+  const averageWeeklyLabel = `Average: ${fmtWholeDollars(averageWeekly)}/week`;
+  const annualizedAverageLabel = `${fmtWholeDollars(averageWeekly * 52)}/year`;
 
   const formatWeekStart = (weekStart) => {
     const [year, month, day] = weekStart.split("-").map(Number);
@@ -310,11 +324,28 @@ export default function WeeklyCashFlowChart({
               strokeOpacity={0.75}
               // strokeDasharray="6 4"
               label={{
-                value: `Average: ${fmtWholeDollars(averageWeekly)}/week | ${fmtWholeDollars(averageWeekly * 52)}/year`,
+                value: `${averageWeeklyLabel} | ${annualizedAverageLabel}`,
                 position: "insideBottomLeft",
                 fill: "#ffffffa8",
-                fontSize: 16,
+                fontSize: isMobileViewport ? 11 : 16,
                 fontWeight: "bold",
+                content: isMobileViewport
+                  ? ({ x, y, fill, fontSize, fontWeight }) => (
+                      <text
+                        x={x}
+                        y={y - fontSize * 1.1}
+                        fill={fill}
+                        fontSize={fontSize}
+                        fontWeight={fontWeight}
+                        textAnchor="start"
+                      >
+                        <tspan x={x}>{averageWeeklyLabel}</tspan>
+                        <tspan x={x} dy={fontSize * 1.1}>
+                          {annualizedAverageLabel}
+                        </tspan>
+                      </text>
+                    )
+                  : undefined,
               }}
             />
           </BarChart>

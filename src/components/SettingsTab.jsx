@@ -12,6 +12,14 @@ import {
 } from "../logic/logic.js";
 import DateMigrationAdmin from "./admin/DateMigrationAdmin.jsx"; // <-- ✨ ADDED
 
+const BACKUP_TABLES = [
+  ["campaigns", dbLocal.campaigns],
+  ["legs", dbLocal.legs],
+  ["accounts", dbLocal.accounts],
+  ["cashTransactions", dbLocal.cashTransactions],
+  ["accountSnapshots", dbLocal.accountSnapshots],
+];
+
 export default function SettingsTab({ reloadAll }) {
   const fileInputRef = useRef(null);
   const [deletedCampaigns, setDeletedCampaigns] = useState([]);
@@ -504,14 +512,27 @@ async function handleUndelete(campaign) {
 
   // ---------- Backup / Restore DB ----------
   async function handleExport() {
-    const campaigns = await dbLocal.getAllCampaigns();
-    const legs = await dbLocal.getAllLegs();
-
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("Sign in before downloading a backup.");
+      return;
+    }
+  
+    const backup = {
+      format: "options-dashboard-backup",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+    };
+  
+    for (const [name, table] of BACKUP_TABLES) {
+      backup[name] = await table.where("uid").equals(uid).toArray();
+    }
+  
     const blob = new Blob(
-      [JSON.stringify({ campaigns, legs }, null, 2)],
+      [JSON.stringify(backup, null, 2)],
       { type: "application/json" }
     );
-
+  
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -538,29 +559,45 @@ async function handleUndelete(campaign) {
 
     const now = Date.now(); 
 
-    const mergeItems = async (table, importedArray) => {
-      if (!Array.isArray(importedArray)) return;
-
-      for (const importedItem of importedArray) {
-        const localItem = await table.get(importedItem.id);
-
-        if (!localItem) {
-          await table.put({ 
-            ...importedItem, 
-            dirty: true, 
-            updatedAt: typeof importedItem.updatedAt === 'number' ? importedItem.updatedAt : now 
-          });
-          continue;
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("Sign in before importing a backup.");
+      return;
+    }
+    
+    const mergeItems = async (table, items) => {
+      if (!Array.isArray(items)) return;
+    
+      for (const item of items) {
+        if (!item?.id) continue;
+    
+        const local = await table.get(item.id);
+        if (local && local.uid !== uid) {
+          throw new Error(`Record ID belongs to another local user: ${item.id}`);
         }
-
-        const importedTime = Number(importedItem.updatedAt) || 0;
-        const localTime = Number(localItem.updatedAt) || 0;
-
-        if (importedTime > localTime) {
-          await table.put({ ...importedItem, dirty: true });
+    
+        const importedTime = Number(item.updatedAt) || 0;
+        const localTime = Number(local?.updatedAt) || 0;
+    
+        if (!local || importedTime > localTime) {
+          const timestamp = importedTime || Date.now();
+          await table.put({
+            ...item,
+            uid,
+            dirty: true,
+            updatedAt: timestamp,
+            clientUpdatedAt: Number(item.clientUpdatedAt) || timestamp,
+          });
         }
       }
     };
+    
+    for (const [name, table] of BACKUP_TABLES) {
+      await mergeItems(table, data[name]);
+    }
+    
+    await forceSync(uid);
+    if (typeof reloadAll === "function") await reloadAll();
 
     await mergeItems(dbLocal.campaigns, data.campaigns);
     await mergeItems(dbLocal.legs, data.legs);
@@ -571,79 +608,119 @@ async function handleUndelete(campaign) {
     if (typeof reloadAll === "function") reloadAll();
   }
   
-  async function handleHardResetImport(e) {
-    const file = e.target.files[0];
+  async function handleHardResetImport(event) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-
-    const text = await file.text();
+  
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("You must be logged in to restore a backup.");
+      input.value = "";
+      return;
+    }
+  
     let data;
-
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(await file.text());
     } catch {
-      alert("Invalid JSON file.");
+      alert("Invalid JSON backup file.");
+      input.value = "";
       return;
     }
-
-    const warning = "DANGER: This will permanently overwrite ALL current data on ALL synced devices with this backup file. Are you absolutely sure?";
-    if (!window.confirm(warning)) {
-      e.target.value = null;
+  
+    const hasAllTables =
+      data &&
+      BACKUP_TABLES.every(([name]) => Array.isArray(data[name]));
+    const hasValidRecords =
+      hasAllTables &&
+      BACKUP_TABLES.every(([name]) =>
+        data[name].every((record) =>
+          record &&
+          typeof record === "object" &&
+          record.id != null &&
+          record.id !== ""
+        )
+      );
+  
+    if (!hasValidRecords) {
+      alert(
+        "This backup is incomplete or contains records without IDs. " +
+        "A full reset requires campaigns, legs, accounts, cashTransactions, and accountSnapshots."
+      );
+      input.value = "";
       return;
     }
-
-    const now = Date.now();
-
-    const currentCampaigns = await dbLocal.campaigns.toArray();
-    const currentLegs = await dbLocal.legs.toArray();
-
-    const campaignTombstones = currentCampaigns.map(c => ({
-      ...c,
-      deleted: true,
-      dirty: true,
-      updatedAt: now
-    }));
-
-    const legTombstones = currentLegs.map(l => ({
-      ...l,
-      deleted: true,
-      dirty: true,
-      updatedAt: now
-    }));
-
-    await dbLocal.campaigns.bulkPut(campaignTombstones);
-    await dbLocal.legs.bulkPut(legTombstones);
-
-    const futureTime = now + 5000; 
-
-    const importedCampaigns = (data.campaigns || []).map(c => ({
-      ...c,
-      deleted: false, 
-      dirty: true,    
-      updatedAt: futureTime
-    }));
-
-    const importedLegs = (data.legs || []).map(l => ({
-      ...l,
-      deleted: false,
-      dirty: true,
-      updatedAt: futureTime
-    }));
-
-    await dbLocal.campaigns.bulkPut(importedCampaigns);
-    await dbLocal.legs.bulkPut(importedLegs);
-
-    e.target.value = null; 
-
-    alert("Hard Reset complete. The app will now sync the backup to all devices.");
-    
-    if (typeof forceSync === "function" && window.currentUserUid) {
-      forceSync(window.currentUserUid);
+  
+    if (
+      !window.confirm(
+        "DANGER: This permanently replaces your current data on all synced devices with this backup. Continue?"
+      )
+    ) {
+      input.value = "";
+      return;
     }
-    if (typeof reloadAll === "function") reloadAll();
+  
+    try {
+      const restoredAt = Date.now() + 5000;
+      const restoredRows = {};
+  
+      for (const [name, table] of BACKUP_TABLES) {
+        for (const record of data[name]) {
+          const localRecord = await table.get(record.id);
+          if (localRecord && localRecord.uid !== uid) {
+            throw new Error(
+              `Record ID ${record.id} belongs to another local user.`
+            );
+          }
+        }
+  
+        restoredRows[name] = data[name].map((record) => ({
+          ...record,
+          uid,
+          deleted: Boolean(record.deleted),
+          dirty: true,
+          updatedAt: restoredAt,
+          clientUpdatedAt: restoredAt,
+          serverUpdatedAt: null,
+        }));
+      }
+  
+      // Remove cloud records first so rows absent from the backup cannot remain there.
+      await deleteAllRemote(uid);
+  
+      await dbLocal.transaction(
+        "rw",
+        ...BACKUP_TABLES.map(([, table]) => table),
+        async () => {
+          for (const [name, table] of BACKUP_TABLES) {
+            await table.where("uid").equals(uid).delete();
+  
+            if (restoredRows[name].length > 0) {
+              await table.bulkPut(restoredRows[name]);
+            }
+          }
+        }
+      );
+  
+      await forceSync(uid);
+  
+      await loadDeletedCampaigns();
+      if (typeof reloadAll === "function") {
+        await reloadAll();
+      }
+  
+      alert("Backup restored and synced.");
+    } catch (error) {
+      console.error("Failed to restore backup:", error);
+      alert(
+        `Backup restore did not complete: ${error.message || "Unknown error"}. ` +
+        "If remote deletion started, retry the restore using the same backup."
+      );
+    } finally {
+      input.value = "";
+    }
   }
-
-
-
 
   const [isCleaning, setIsCleaning] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");

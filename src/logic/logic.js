@@ -887,7 +887,7 @@ function readNonnegativePrice(value) {
   return Number.isFinite(price) && price >= 0 ? price : null;
 }
 
-function optionIntrinsic(right, spot, strike) {
+export function optionIntrinsic(right, spot, strike) {
   return right === "put"
     ? Math.max(strike - spot, 0)
     : Math.max(spot - strike, 0);

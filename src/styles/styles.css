@@ -234,6 +234,73 @@ textarea:focus {
   flex: 1 1 140px;
 }
 
+.leg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.leg-form-fields {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.leg-form-field {
+  min-width: 0;
+}
+
+.leg-form-field label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.leg-form .input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  min-width: 0;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
+.leg-form input[type="date"] {
+  color-scheme: dark;
+}
+
+.leg-form-field--notes {
+  grid-column: span 4;
+}
+
+.leg-form button {
+  align-self: flex-start;
+}
+
+@media (max-width: 900px) {
+  .leg-form-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .leg-form-field--notes {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 600px) {
+  .leg-form-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .leg-form-field--notes {
+    grid-column: span 2;
+  }
+}
+
 /* Buttons */
 
 button {
@@ -513,12 +580,19 @@ button.secondary:hover {
   gap: 12px;
 }
 
+.leg-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 /* Detail Form Row (Label + Input alignment) */
 
 .detail-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .detail-row label {
@@ -534,6 +608,16 @@ button.secondary:hover {
 .detail-row select {
   flex: 1;
   max-width: 360px;
+}
+
+.leg-edit-fields input,
+.leg-edit-fields select {
+  box-sizing: border-box;
+  height: 36px;
+}
+
+.leg-edit-fields input[type="date"] {
+  color-scheme: dark;
 }
 
 /* 3-Card Summary Grid Layout */
@@ -753,21 +837,30 @@ button.secondary:hover {
 }
 
 @media (max-width: 600px) {
-  /* Stack label above inputs on mobile for leg forms & mini-forms */
-  .detail-row {
+  .leg-edit-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 8px;
+  }
+
+  .leg-edit-fields .detail-row {
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
   }
 
-  .detail-row label {
+  .leg-edit-fields .detail-row label {
     min-width: 0;
   }
 
-  .detail-row input,
-  .detail-row textarea,
-  .detail-row select {
+  .leg-edit-fields .detail-row input,
+  .leg-edit-fields .detail-row textarea,
+  .leg-edit-fields .detail-row select {
     max-width: 100%;
+  }
+
+  .leg-edit-fields .detail-row--textarea {
+    grid-column: 1 / -1;
   }
 
   .summary-table th,
@@ -813,6 +906,14 @@ button.secondary:hover {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+.roll-action-form input[type="date"] {
+  color-scheme: dark;
+}
+
+.close-action-form input[type="date"] {
+  color-scheme: dark;
 }
 
 /* Action Buttons */
@@ -1211,6 +1312,22 @@ button.secondary:hover {
   gap: 8px 20px;
   margin-top: 12px;
   font-size: 13px;
+}
+
+.account-risk-chart {
+  margin-top: 16px;
+}
+
+.account-risk-chart h4 {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.account-risk-chart-plot {
+  width: 100%;
+  height: 260px;
 }
 
 .account-position-list {

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   computeAccountMarginEstimate,
   fmtWholeDollars,
+  optionIntrinsic,
 } from "../logic/logic.js";
 import {
   createAccount,
@@ -10,6 +11,7 @@ import {
   saveAccountRecord,
   setDefaultAccount,
 } from "../sync/sync.js";
+import AccountRiskChart from "./AccountRiskChart.jsx";
 
 function today() {
   const date = new Date();
@@ -68,6 +70,87 @@ function isActiveOnDate(leg, date) {
   if (expiry && expiry < date) return false;
 
   return true;
+}
+
+function calculateAccountRiskScenarios({
+  cashBalance,
+  cashFlowsComplete,
+  legs,
+  activeLegs,
+  marks,
+  underlyingPrices,
+  date,
+}) {
+  return Array.from({ length: 13 }, (_, index) => -50 + index * 5).map(
+    (shockPercent) => {
+      const multiplier = 1 + shockPercent / 100;
+      let netPositionValue = 0;
+      let complete = cashBalance != null && cashFlowsComplete;
+
+      for (const leg of activeLegs) {
+        const info = typeInfo(leg);
+        const quantity = Math.abs(Number(leg.qty));
+        const mark = currentPositionMark(leg, marks, underlyingPrices);
+        if (
+          !info.supported ||
+          !Number.isFinite(quantity) ||
+          mark == null
+        ) {
+          complete = false;
+          break;
+        }
+
+        let scenarioMark;
+        if (info.isStock) {
+          scenarioMark = mark * multiplier;
+        } else {
+          const ticker = String(leg.ticker || "").trim().toUpperCase();
+          const spot = numberOrNull(underlyingPrices[ticker]);
+          const strike = numberOrNull(leg.strike);
+          if (spot == null || strike == null || strike <= 0) {
+            complete = false;
+            break;
+          }
+
+          const scenarioSpot = spot * multiplier;
+          const currentIntrinsic = optionIntrinsic(
+            info.type.endsWith("_put") ? "put" : "call",
+            spot,
+            strike
+          );
+          const extrinsic = Math.max(0, mark - currentIntrinsic);
+          scenarioMark =
+            optionIntrinsic(
+              info.type.endsWith("_put") ? "put" : "call",
+              scenarioSpot,
+              strike
+            ) + extrinsic;
+        }
+
+        netPositionValue +=
+          (info.isBuy ? 1 : -1) * scenarioMark * quantity * info.multiplier;
+      }
+
+      const marginEstimate = computeAccountMarginEstimate(legs, {
+        asOfDate: date,
+        positionMarks: marks,
+        underlyingPrices,
+        shockPercent,
+      });
+
+      if (!marginEstimate.complete || marginEstimate.total == null) {
+        complete = false;
+      }
+
+      return {
+        shockPercent,
+        excessMargin:
+          complete
+            ? cashBalance + netPositionValue - marginEstimate.total
+            : null,
+      };
+    }
+  );
 }
 
 function calculateAccountMetrics({
@@ -195,6 +278,15 @@ function calculateAccountMetrics({
     unsupportedPositions.length === 0
       ? cashBalance + netPositionValue
       : null;
+  const riskScenarios = calculateAccountRiskScenarios({
+    cashBalance,
+    cashFlowsComplete: !unsupportedCashFlows,
+    legs,
+    activeLegs,
+    marks,
+    underlyingPrices,
+    date,
+  });
 
   return {
     cashBalance,
@@ -210,6 +302,10 @@ function calculateAccountMetrics({
     marginEstimate,
     marginDown,
     marginUp,
+    riskScenarios,
+    riskScenariosComplete: riskScenarios.every((point) =>
+      Number.isFinite(point.excessMargin)
+    ),
     unsupportedPositions,
     unsupportedCashFlows,
     unsupportedMargin: !marginEstimate.complete,
@@ -652,6 +748,12 @@ export default function AccountTab({
                 {displayMoney(metrics.marginUp.total)}
               </span>
             </div>
+
+            <AccountRiskChart
+              accountName={account.name || "Unnamed account"}
+              data={metrics.riskScenarios}
+              complete={metrics.riskScenariosComplete}
+            />
 
             <div className="account-position-list">
               <div className="account-position-header">
