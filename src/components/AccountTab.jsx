@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   computeAccountMarginEstimate,
   fmtWholeDollars,
@@ -325,22 +325,25 @@ export default function AccountTab({
   cashTransactions = [],
   accountSnapshots = [],
 }) {
-  const [selectedAccountId, setSelectedAccountId] = useState(
+  const [selectedAccountIdState, setSelectedAccountIdState] = useState(
     defaultAccountId || "all"
   );
   const [markDate, setMarkDate] = useState(today());
-  const [positionMarks, setPositionMarks] = useState({});
-  const [name, setName] = useState("");
-  const [openingCash, setOpeningCash] = useState("");
-  const [openingCashDate, setOpeningCashDate] = useState(today());
+  const [markEdits, setMarkEdits] = useState(null);
   const [editingCashTransaction, setEditingCashTransaction] = useState(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAccountEdit, setShowAccountEdit] = useState(false);
   const [showCashAdjustment, setShowCashAdjustment] = useState(false);
 
-  const [underlyingPrices, setUnderlyingPrices] = useState({});
   const [scenarioShockPct, setScenarioShockPct] = useState(10);
 
+  const selectedAccountId =
+    selectedAccountIdState !== "all" &&
+    !accounts.some((account) => account.id === selectedAccountIdState)
+      ? accounts.some((account) => account.id === defaultAccountId)
+        ? defaultAccountId
+        : "all"
+      : selectedAccountIdState;
   const selectedAccount = accounts.find(
     (account) => account.id === selectedAccountId
   );
@@ -351,61 +354,44 @@ export default function AccountTab({
 
   const activeCashTransactions = cashTransactions.filter((item) => !item.deleted);
 
-  useEffect(() => {
-    if (
-      selectedAccountId !== "all" &&
-      !accounts.some((account) => account.id === selectedAccountId)
-    ) {
-      setSelectedAccountId(defaultAccountId || "all");
-    }
-  }, [accounts, defaultAccountId, selectedAccountId]);
-
-  useEffect(() => {
-    setName(selectedAccount?.name ?? "");
-    setOpeningCash(
-      selectedAccount?.openingCash == null
-        ? ""
-        : String(selectedAccount.openingCash)
-    );
-    setOpeningCashDate(selectedAccount?.openingCashDate ?? today());
-  }, [
-    selectedAccount?.id,
-    selectedAccount?.name,
-    selectedAccount?.openingCash,
-    selectedAccount?.openingCashDate,
-  ]);
-
-  useEffect(() => {
+  const snapshotValues = (() => {
     const visibleIds = new Set(visibleAccounts.map((account) => account.id));
+    const latestSnapshots = new Map();
     const marks = {};
     const prices = {};
 
     for (const snapshot of accountSnapshots) {
-      if (!visibleIds.has(snapshot.accountId) || snapshot.date !== markDate) {
+      if (!visibleIds.has(snapshot.accountId) || snapshot.date > markDate) {
         continue;
       }
+
+      const latestSnapshot = latestSnapshots.get(snapshot.accountId);
+      if (!latestSnapshot || snapshot.date > latestSnapshot.date) {
+        latestSnapshots.set(snapshot.accountId, snapshot);
+      }
+    }
+
+    for (const snapshot of latestSnapshots.values()) {
       Object.assign(marks, snapshot.positionMarks || {});
       Object.assign(prices, snapshot.underlyingPrices || {});
     }
 
-    setPositionMarks(marks);
-    setUnderlyingPrices(prices);
-  }, [accountSnapshots, markDate, selectedAccountId, accounts]);
+    return { positionMarks: marks, underlyingPrices: prices };
+  })();
+  const markScope = `${selectedAccountId}:${markDate}`;
+  const { positionMarks, underlyingPrices } =
+    markEdits?.scope === markScope ? markEdits : snapshotValues;
 
-  const legsByAccount = useMemo(() => {
-    const campaignsById = new Map(
-      campaigns.map((campaign) => [String(campaign.id), campaign])
-    );
-    const grouped = new Map(accounts.map((account) => [account.id, []]));
+  const campaignsById = new Map(
+    campaigns.map((campaign) => [String(campaign.id), campaign])
+  );
+  const legsByAccount = new Map(accounts.map((account) => [account.id, []]));
 
-    for (const leg of legs) {
-      const campaign = campaignsById.get(String(leg.campaignId));
-      const accountId = campaign?.accountId || defaultAccountId;
-      if (grouped.has(accountId)) grouped.get(accountId).push(leg);
-    }
-
-    return grouped;
-  }, [accounts, campaigns, defaultAccountId, legs]);
+  for (const leg of legs) {
+    const campaign = campaignsById.get(String(leg.campaignId));
+    const accountId = campaign?.accountId || defaultAccountId;
+    if (legsByAccount.has(accountId)) legsByAccount.get(accountId).push(leg);
+  }
 
   const accountRows = visibleAccounts.map((account) => {
     const accountLegs = legsByAccount.get(account.id) || [];
@@ -470,7 +456,7 @@ export default function AccountTab({
     });
 
     formElement.reset();
-    setSelectedAccountId(id);
+    setSelectedAccountIdState(id);
     setShowAddAccount(false);
   }
 
@@ -478,12 +464,13 @@ export default function AccountTab({
     event.preventDefault();
     if (!uid || !selectedAccount) return;
 
+    const form = new FormData(event.currentTarget);
     await saveAccountRecord(uid, "accounts", {
       ...selectedAccount,
-      name: name.trim(),
+      name: String(form.get("name") || "").trim(),
       currency: selectedAccount.currency || "USD",
-      openingCash: Number(openingCash),
-      openingCashDate,
+      openingCash: Number(form.get("openingCash")),
+      openingCashDate: String(form.get("openingCashDate")),
     });
     setShowAccountEdit(false);
   }
@@ -497,10 +484,42 @@ export default function AccountTab({
 
     try {
       await deleteAccount(uid, selectedAccount.id);
-      setSelectedAccountId(defaultAccountId || "all");
+      setSelectedAccountIdState(defaultAccountId || "all");
     } catch (error) {
       window.alert(error.message || "Could not delete the account.");
     }
+  }
+
+  function updatePositionMark(legId, value) {
+    setMarkEdits((current) => {
+      const currentValues =
+        current?.scope === markScope
+          ? current
+          : { scope: markScope, ...snapshotValues };
+      return {
+        ...currentValues,
+        positionMarks: {
+          ...currentValues.positionMarks,
+          [legId]: value,
+        },
+      };
+    });
+  }
+
+  function updateUnderlyingPrice(ticker, value) {
+    setMarkEdits((current) => {
+      const currentValues =
+        current?.scope === markScope
+          ? current
+          : { scope: markScope, ...snapshotValues };
+      return {
+        ...currentValues,
+        underlyingPrices: {
+          ...currentValues.underlyingPrices,
+          [ticker]: value,
+        },
+      };
+    });
   }
 
   async function handleSaveCashTransaction(event) {
@@ -596,7 +615,7 @@ export default function AccountTab({
             className="input account-picker"
             value={selectedAccountId}
             onChange={(event) => {
-              setSelectedAccountId(event.target.value);
+              setSelectedAccountIdState(event.target.value);
               setShowAccountEdit(false);
               setEditingCashTransaction(null);
               setShowCashAdjustment(false);
@@ -665,31 +684,35 @@ export default function AccountTab({
       )}
 
       {showAccountEdit && selectedAccount && (
-        <form className="card" onSubmit={handleSaveAccount}>
+        <form
+          key={selectedAccount.id}
+          className="card"
+          onSubmit={handleSaveAccount}
+        >
           <h3>{selectedAccount.name || "Account details"}</h3>
           <div className="form-row">
             <input
               className="input"
+              name="name"
               required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
+              defaultValue={selectedAccount.name ?? ""}
               placeholder="Account name"
             />
             <input
               className="input"
+              name="openingCash"
               required
               type="number"
               step="0.01"
-              value={openingCash}
-              onChange={(event) => setOpeningCash(event.target.value)}
+              defaultValue={selectedAccount.openingCash ?? ""}
               placeholder="Opening cash"
             />
             <input
               className="input"
+              name="openingCashDate"
               required
               type="date"
-              value={openingCashDate}
-              onChange={(event) => setOpeningCashDate(event.target.value)}
+              defaultValue={selectedAccount.openingCashDate ?? today()}
             />
             <button type="submit" disabled={!uid}>Save account</button>
             {!selectedAccount.isDefault && (
@@ -884,7 +907,7 @@ export default function AccountTab({
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedAccountId(item.accountId);
+                    setSelectedAccountIdState(item.accountId);
                     setEditingCashTransaction(item);
                     setShowCashAdjustment(true);
                   }}
@@ -933,10 +956,7 @@ export default function AccountTab({
                   step="0.01"
                   value={positionMarks[String(leg.id)] ?? ""}
                   onChange={(event) =>
-                    setPositionMarks((current) => ({
-                      ...current,
-                      [String(leg.id)]: event.target.value,
-                    }))
+                    updatePositionMark(String(leg.id), event.target.value)
                   }
                   placeholder={info.isOption ? "Option mark per share" : "Stock price per share"}
                 />
@@ -959,10 +979,7 @@ export default function AccountTab({
               step="0.01"
               value={underlyingPrices[ticker] ?? ""}
               onChange={(event) =>
-                setUnderlyingPrices((current) => ({
-                  ...current,
-                  [ticker]: event.target.value,
-                }))
+                updateUnderlyingPrice(ticker, event.target.value)
               }
             />
           </div>

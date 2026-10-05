@@ -5,7 +5,9 @@ import {
 
 const DEFAULT_MARGIN_RATIO = 0.3;
 const MARGIN_RATIO_BY_TICKER = new Map([
+  ["AAPL", 0.25],
   ["GOOG", 0.25],
+  ["NVDA", 0.25],
   ["SOXL", 0.6],
 ]);
 

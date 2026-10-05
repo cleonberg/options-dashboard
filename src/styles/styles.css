@@ -859,6 +859,11 @@ button.secondary:hover {
     max-width: 100%;
   }
 
+  .leg-edit-fields .detail-row input[type="date"] {
+    width: 100%;
+    min-width: 0;
+  }
+
   .leg-edit-fields .detail-row--textarea {
     grid-column: 1 / -1;
   }
