@@ -664,6 +664,19 @@ button.secondary:hover {
   grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
 }
 
+.summary-card-metrics--formula {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 6px;
+  width: min(100%, 360px);
+  margin: 2px auto 0;
+}
+
+.summary-formula-operator {
+  align-self: center;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .summary-metric-item {
   display: flex;
   flex-direction: column;
@@ -1251,22 +1264,16 @@ button.secondary:hover {
 
 .account-summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
 
 .account-summary-grid > .summary-card {
-  align-items: flex-start;
+  align-items: center;
   min-width: 0;
   padding: 12px;
-  text-align: left;
-}
-
-.account-summary-grid .summary-card-title {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
+  text-align: center;
 }
 
 .account-summary-value {
@@ -1330,9 +1337,60 @@ button.secondary:hover {
   font-weight: 600;
 }
 
+.account-risk-what-if {
+  margin-top: 14px;
+}
+
+.account-what-if-toggle {
+  margin: 0 0 10px;
+}
+
+.account-what-if-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.account-what-if-panel > p,
+.account-risk-chart-comparison-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.account-what-if-form h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.account-what-if-form .form-row {
+  flex-wrap: wrap;
+}
+
+.account-what-if-form .form-row label {
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+  font-size: 12px;
+}
+
+.account-risk-chart-comparison-note {
+  margin-bottom: 6px;
+}
+
 .account-risk-chart-plot {
   width: 100%;
-  height: 260px;
+  height: 520px;
+}
+
+.account-mark-section-title {
+  margin: 16px 0 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .account-position-list {
@@ -1341,16 +1399,21 @@ button.secondary:hover {
 
 .account-position-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
   padding: 6px 0;
   border-top: 1px solid var(--border-color);
   font-size: 13px;
 }
 
+.account-position-row input[type="checkbox"] {
+  margin: 0 auto;
+}
+
 .account-position-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
   gap: 12px;
   padding: 0 0 6px;
   color: var(--text-muted);
@@ -1363,7 +1426,6 @@ button.secondary:hover {
 }
 
 @media (max-width: 900px) {
-  .account-summary-grid,
   .account-overview-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1379,18 +1441,41 @@ button.secondary:hover {
     max-width: none;
   }
 
-  .account-summary-grid,
   .account-overview-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .account-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .summary-card-metrics--formula {
+    gap: 4px;
+  }
+
+  .summary-card-metrics--formula .summary-metric-label {
+    font-size: 10px;
+  }
+
+  .summary-card-metrics--formula .summary-metric-val {
+    font-size: 14px;
+  }
+
   .account-position-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 92px minmax(0, 1fr) auto;
   }
 
   .account-position-header {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 92px minmax(0, 1fr) auto;
   }
+}
+
+.cash-adjustments-section {
+  margin-top: 18px;
+}
+
+.cash-adjustments-toggle {
+  margin-bottom: 12px;
 }
 
 .cash-adjustments-header {

@@ -1,5 +1,6 @@
 import {
   CartesianGrid,
+  Legend,
   LabelList,
   Line,
   LineChart,
@@ -21,18 +22,40 @@ const formatCompactDollars = (value) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-export default function AccountRiskChart({ accountName, data, complete }) {
-  const labeledData = data.map((point) => ({
-    ...point,
-    marginLabel:
-      point.shockPercent % 10 === 0 && Number.isFinite(point.excessMargin)
-        ? formatCompactDollars(point.excessMargin)
-        : "",
-  }));
+export default function AccountRiskChart({
+  accountName,
+  data,
+  baselineData,
+  complete,
+}) {
+  const comparing = Array.isArray(baselineData);
+  const baselineByShock = new Map(
+    (baselineData || []).map((point) => [point.shockPercent, point])
+  );
+  const labeledData = data.map((point) => {
+    const baselinePoint = baselineByShock.get(point.shockPercent);
+    const label = (value) =>
+      point.shockPercent % 10 === 0 && Number.isFinite(value)
+        ? formatCompactDollars(value)
+        : "";
+    return {
+      ...point,
+      baselineAccountValue: baselinePoint?.accountValue,
+      baselineHouseRequirement: baselinePoint?.houseRequirement,
+      baselineExcessMargin: baselinePoint?.excessMargin,
+      accountValueLabel: label(point.accountValue),
+      houseRequirementLabel: label(point.houseRequirement),
+      marginLabel: label(point.excessMargin),
+    };
+  });
 
   return (
     <div className="account-risk-chart">
-      <h4>Available excess margin by price scenario</h4>
+      <h4>
+        {comparing ? "Current vs. what-if " : ""}
+        account value, house requirement, and excess margin by price scenario
+      </h4>
+      {comparing && <p className="account-risk-chart-comparison-note">Dashed lines show current positions.</p>}
       {!complete ? (
         <p>
           Risk graph unavailable. Complete account cash, position marks,
@@ -46,8 +69,8 @@ export default function AccountRiskChart({ accountName, data, complete }) {
               <XAxis
                 dataKey="shockPercent"
                 type="number"
-                domain={[-50, 10]}
-                ticks={[-50, -40, -30, -20, -10, 0, 10]}
+                domain={[-50, 20]}
+                ticks={[-50, -40, -30, -20, -10, 0, 10, 20]}
                 tickFormatter={formatPercent}
                 stroke="#9fb3ff"
                 tick={{ fontSize: 12 }}
@@ -60,14 +83,15 @@ export default function AccountRiskChart({ accountName, data, complete }) {
               />
               <ReferenceLine y={0} stroke="#a0aec0" strokeDasharray="4 4" />
               <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 4" />
+              <Legend />
               <Tooltip
                 cursor={false}
                 labelFormatter={(value) =>
                   `Price scenario: ${formatPercent(Number(value))}`
                 }
-                formatter={(value) => [
+                formatter={(value, name) => [
                   fmtWholeDollars(value),
-                  "Available excess margin",
+                  name,
                 ]}
                 contentStyle={{
                   backgroundColor: "#1b2b4f",
@@ -76,10 +100,77 @@ export default function AccountRiskChart({ accountName, data, complete }) {
                   color: "#fff",
                 }}
               />
+              {comparing && (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="baselineAccountValue"
+                    name="Current account value"
+                    stroke="#34d399"
+                    strokeOpacity={0.55}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="baselineHouseRequirement"
+                    name="Current house requirement"
+                    stroke="#fbbf24"
+                    strokeOpacity={0.55}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="baselineExcessMargin"
+                    name={`${accountName} current excess margin`}
+                    stroke="#60a5fa"
+                    strokeOpacity={0.55}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                </>
+              )}
+              <Line
+                type="monotone"
+                dataKey="accountValue"
+                name={comparing ? "What-if account value" : "Account value"}
+                stroke="#34d399"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5 }}
+              >
+                <LabelList
+                  dataKey="accountValueLabel"
+                  position="top"
+                  fill="#a7f3d0"
+                  fontSize={11}
+                />
+              </Line>
+              <Line
+                type="monotone"
+                dataKey="houseRequirement"
+                name={comparing ? "What-if house requirement" : "House requirement"}
+                stroke="#fbbf24"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5 }}
+              >
+                <LabelList
+                  dataKey="houseRequirementLabel"
+                  position="bottom"
+                  fill="#fde68a"
+                  fontSize={11}
+                />
+              </Line>
               <Line
                 type="monotone"
                 dataKey="excessMargin"
-                name={`${accountName} available excess margin`}
+                name={
+                  comparing
+                    ? "What-if available excess margin"
+                    : `${accountName} available excess margin`
+                }
                 stroke="#60a5fa"
                 strokeWidth={2}
                 dot={false}

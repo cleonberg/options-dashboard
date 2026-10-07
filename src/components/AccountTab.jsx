@@ -81,7 +81,7 @@ function calculateAccountRiskScenarios({
   underlyingPrices,
   date,
 }) {
-  return Array.from({ length: 13 }, (_, index) => -50 + index * 5).map(
+  return Array.from({ length: 15 }, (_, index) => -50 + index * 5).map(
     (shockPercent) => {
       const multiplier = 1 + shockPercent / 100;
       let netPositionValue = 0;
@@ -144,6 +144,11 @@ function calculateAccountRiskScenarios({
 
       return {
         shockPercent,
+        accountValue: complete ? cashBalance + netPositionValue : null,
+        houseRequirement:
+          marginEstimate.complete && marginEstimate.total != null
+            ? marginEstimate.total
+            : null,
         excessMargin:
           complete
             ? cashBalance + netPositionValue - marginEstimate.total
@@ -151,6 +156,81 @@ function calculateAccountRiskScenarios({
       };
     }
   );
+}
+
+function calculateWhatIfRiskScenarios({
+  accountId,
+  cashBalance,
+  cashFlowsComplete,
+  legs,
+  closedLegIds,
+  hypotheticalPosition,
+  marks,
+  underlyingPrices,
+  date,
+}) {
+  let whatIfCashBalance = cashBalance;
+  const closedIds = new Set(closedLegIds);
+
+  for (const leg of legs) {
+    if (!closedIds.has(String(leg.id))) continue;
+    const info = typeInfo(leg);
+    const mark = currentPositionMark(leg, marks, underlyingPrices);
+    const quantity = Math.abs(Number(leg.qty));
+    if (!info.supported || mark == null || !Number.isFinite(quantity)) continue;
+
+    if (whatIfCashBalance != null) {
+      whatIfCashBalance +=
+        (info.isBuy ? 1 : -1) * mark * quantity * info.multiplier;
+    }
+  }
+
+  const simulatedLegs = legs.filter(
+    (leg) => !closedIds.has(String(leg.id))
+  );
+  const simulatedMarks = { ...marks };
+  const simulatedUnderlyingPrices = { ...underlyingPrices };
+
+  if (hypotheticalPosition) {
+    const id = `what-if-${accountId}-${hypotheticalPosition.id}`;
+    const hypotheticalLeg = {
+      id,
+      campaignId: id,
+      type: hypotheticalPosition.type,
+      ticker: hypotheticalPosition.ticker,
+      qty: hypotheticalPosition.qty,
+      strike: hypotheticalPosition.strike,
+      expiry: hypotheticalPosition.expiry,
+      openDate: date,
+      openPrice: hypotheticalPosition.mark,
+      isOpen: true,
+    };
+    const info = typeInfo(hypotheticalLeg);
+
+    simulatedLegs.push(hypotheticalLeg);
+    simulatedMarks[id] = hypotheticalPosition.mark;
+    if (hypotheticalPosition.underlyingPrice != null) {
+      simulatedUnderlyingPrices[hypotheticalPosition.ticker] =
+        hypotheticalPosition.underlyingPrice;
+    }
+    if (whatIfCashBalance != null) {
+      whatIfCashBalance +=
+        (info.isBuy ? -1 : 1) *
+        hypotheticalPosition.mark *
+        hypotheticalPosition.qty *
+        info.multiplier;
+    }
+  }
+
+  return calculateAccountRiskScenarios({
+    cashBalance: whatIfCashBalance,
+    cashFlowsComplete,
+    legs: simulatedLegs,
+    activeLegs: simulatedLegs.filter((leg) => isActiveOnDate(leg, date)),
+    marks: simulatedMarks,
+    underlyingPrices: simulatedUnderlyingPrices,
+    date,
+  });
 }
 
 function calculateAccountMetrics({
@@ -297,6 +377,7 @@ function calculateAccountMetrics({
         ? marginableSecurities - houseRequirement
         : null,
     totalAccountValue,
+    cashFlowsComplete: !unsupportedCashFlows,
     activeLegs,
     missingMarks,
     marginEstimate,
@@ -316,6 +397,320 @@ function displayMoney(value) {
   return value == null ? "Incomplete" : fmtWholeDollars(value);
 }
 
+function positionDescription(leg) {
+  const quantity = Math.abs(Number(leg.qty));
+  const side = String(leg.type || "").startsWith("buy_") ? "Long" : "Short";
+  const type = String(leg.type || "").replace(/^(buy|sell)_/, "");
+  return `${side} ${quantity} ${leg.ticker || ""} ${type}${
+    leg.strike ? ` ${leg.strike}` : ""
+  }${leg.expiry ? ` exp ${leg.expiry}` : ""}`.trim();
+}
+
+function AccountRiskWhatIf({
+  account,
+  legs,
+  metrics,
+  marks,
+  underlyingPrices,
+  date,
+}) {
+  const [showControls, setShowControls] = useState(false);
+  const [closedLegIds, setClosedLegIds] = useState([]);
+  const [hypotheticalPosition, setHypotheticalPosition] = useState(null);
+  const [positionType, setPositionType] = useState("buy_call");
+  const [formValues, setFormValues] = useState({
+    ticker: "",
+    qty: "1",
+    mark: "",
+    strike: "",
+    expiry: "",
+    underlyingPrice: "",
+  });
+  const [formError, setFormError] = useState("");
+  const isOption = positionType.endsWith("_call") || positionType.endsWith("_put");
+  const hasChanges = closedLegIds.length > 0 || hypotheticalPosition != null;
+  const whatIfData = hasChanges
+    ? calculateWhatIfRiskScenarios({
+        accountId: account.id,
+        cashBalance: metrics.cashBalance,
+        cashFlowsComplete: metrics.cashFlowsComplete,
+        legs,
+        closedLegIds,
+        hypotheticalPosition,
+        marks,
+        underlyingPrices,
+        date,
+      })
+    : metrics.riskScenarios;
+  const complete = whatIfData.every((point) =>
+    Number.isFinite(point.excessMargin)
+  );
+
+  function updateFormValue(name, value) {
+    setFormValues((current) => ({ ...current, [name]: value }));
+  }
+
+  function handleAddHypotheticalPosition(event) {
+    event.preventDefault();
+    const ticker = formValues.ticker.trim().toUpperCase();
+    const quantity = Number(formValues.qty);
+    const mark = Number(formValues.mark);
+    const strike = isOption ? Number(formValues.strike) : null;
+    const underlyingPrice = isOption
+      ? Number(formValues.underlyingPrice)
+      : null;
+
+    if (
+      !ticker ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(mark) ||
+      mark < 0 ||
+      (isOption &&
+        (!Number.isFinite(strike) ||
+          strike <= 0 ||
+          !formValues.expiry ||
+          formValues.expiry < date ||
+          !Number.isFinite(underlyingPrice) ||
+          underlyingPrice <= 0))
+    ) {
+      setFormError("Enter valid position details before adding the what-if.");
+      return;
+    }
+
+    setHypotheticalPosition({
+      id: Date.now(),
+      type: positionType,
+      ticker,
+      qty: quantity,
+      mark,
+      strike,
+      expiry: isOption ? formValues.expiry : "",
+      underlyingPrice,
+    });
+    setFormError("");
+  }
+
+  function toggleClosedPosition(leg) {
+    const id = String(leg.id);
+    setClosedLegIds((current) =>
+      current.includes(id)
+        ? current.filter((closedId) => closedId !== id)
+        : [...current, id]
+    );
+  }
+
+  function handleReset() {
+    setClosedLegIds([]);
+    setHypotheticalPosition(null);
+    setFormError("");
+  }
+
+  return (
+    <div className="account-risk-what-if">
+      <button
+        type="button"
+        className="account-what-if-toggle"
+        aria-expanded={showControls}
+        onClick={() => setShowControls((visible) => !visible)}
+      >
+        {showControls ? "Hide what-if controls" : "What if?"}
+        {hasChanges ? " (scenario active)" : ""}
+      </button>
+
+      {showControls && (
+        <div className="account-what-if-panel">
+          <p>
+            Changes are temporary. A hypothetical position is assumed opened
+            at the price entered below. Use the position table to test closes.
+          </p>
+
+          <form
+            className="account-what-if-form"
+            onSubmit={handleAddHypotheticalPosition}
+          >
+            <h4>
+              {hypotheticalPosition
+                ? "Replace hypothetical position"
+                : "Open a hypothetical position"}
+            </h4>
+            <div className="form-row">
+              <label>
+                Position
+                <select
+                  className="input"
+                  value={positionType}
+                  onChange={(event) => setPositionType(event.target.value)}
+                >
+                  <option value="buy_stock">Buy stock</option>
+                  <option value="sell_stock">Sell stock</option>
+                  <option value="buy_call">Buy call</option>
+                  <option value="sell_call">Sell call</option>
+                  <option value="buy_put">Buy put</option>
+                  <option value="sell_put">Sell put</option>
+                </select>
+              </label>
+              <label>
+                Ticker
+                <input
+                  className="input"
+                  required
+                  value={formValues.ticker}
+                  onChange={(event) => {
+                    const ticker = event.target.value;
+                    updateFormValue("ticker", ticker);
+                    if (isOption) {
+                      updateFormValue(
+                        "underlyingPrice",
+                        underlyingPrices[ticker.trim().toUpperCase()] ?? ""
+                      );
+                    }
+                  }}
+                />
+              </label>
+              <label>
+                Quantity
+                <input
+                  className="input"
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  required
+                  value={formValues.qty}
+                  onChange={(event) => updateFormValue("qty", event.target.value)}
+                />
+              </label>
+              <label>
+                Price / premium per share
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={formValues.mark}
+                  onChange={(event) => updateFormValue("mark", event.target.value)}
+                />
+              </label>
+              {isOption && (
+                <>
+                  <label>
+                    Strike
+                    <input
+                      className="input"
+                      type="number"
+                      min="0.01"
+                      step="any"
+                      required
+                      value={formValues.strike}
+                      onChange={(event) =>
+                        updateFormValue("strike", event.target.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    Expiration
+                    <input
+                      className="input"
+                      type="date"
+                      min={date}
+                      required
+                      value={formValues.expiry}
+                      onChange={(event) =>
+                        updateFormValue("expiry", event.target.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    Underlying price
+                    <input
+                      className="input"
+                      type="number"
+                      min="0.01"
+                      step="any"
+                      required
+                      value={formValues.underlyingPrice}
+                      onChange={(event) =>
+                        updateFormValue("underlyingPrice", event.target.value)
+                      }
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+            {formError && <p role="alert">{formError}</p>}
+            <button type="submit">
+              {hypotheticalPosition ? "Update hypothetical position" : "Add position"}
+            </button>
+            {hypotheticalPosition && (
+              <button
+                type="button"
+                onClick={() => setHypotheticalPosition(null)}
+              >
+                Remove hypothetical position
+              </button>
+            )}
+            {hasChanges && (
+              <button type="button" onClick={handleReset}>
+                Reset what-if
+              </button>
+            )}
+          </form>
+        </div>
+      )}
+
+      <AccountRiskChart
+        accountName={account.name || "Unnamed account"}
+        data={whatIfData}
+        baselineData={hasChanges ? metrics.riskScenarios : null}
+        complete={complete}
+      />
+
+      <div className="account-position-list">
+        <div className="account-position-header">
+          <span>Close in what-if</span>
+          <span>Position</span>
+          <span>Margin requirement</span>
+        </div>
+
+        {metrics.marginEstimate.positions.map((item) => {
+          const leg = metrics.activeLegs.find(
+            (candidate) => String(candidate.id) === item.legId
+          );
+          if (!leg) return null;
+
+          const canClose =
+            typeInfo(leg).supported &&
+            currentPositionMark(leg, marks, underlyingPrices) != null;
+          const checked = closedLegIds.includes(String(leg.id));
+
+          return (
+            <div className="account-position-row" key={item.legId}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={!canClose}
+                aria-label={`Close ${positionDescription(leg)} in what-if`}
+                title={
+                  canClose
+                    ? "Exclude this position from the what-if"
+                    : "A current mark is required to simulate closing this position"
+                }
+                onChange={() => toggleClosedPosition(leg)}
+              />
+              <span>
+                {leg.ticker} {leg.type} {leg.qty}
+                {leg.strike ? ` @ ${leg.strike}` : ""}
+              </span>
+              <strong>{displayMoney(item.requiredMargin)}</strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AccountTab({
   uid,
   accounts = [],
@@ -333,6 +728,7 @@ export default function AccountTab({
   const [editingCashTransaction, setEditingCashTransaction] = useState(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAccountEdit, setShowAccountEdit] = useState(false);
+  const [showCashAdjustments, setShowCashAdjustments] = useState(false);
   const [showCashAdjustment, setShowCashAdjustment] = useState(false);
 
   const [scenarioShockPct, setScenarioShockPct] = useState(10);
@@ -618,6 +1014,7 @@ export default function AccountTab({
               setSelectedAccountIdState(event.target.value);
               setShowAccountEdit(false);
               setEditingCashTransaction(null);
+              setShowCashAdjustments(false);
               setShowCashAdjustment(false);
             }}
           >
@@ -740,24 +1137,54 @@ export default function AccountTab({
 
 
       <div className="summary-grid-cards account-summary-grid">
-        {[
-          ["Cash balance", "cashBalance"],
-          ["Account value", "totalAccountValue"],
-          ["Marginable securities", "marginableSecurities"],
-          ["House requirement", "houseRequirement"],
-          ["Net surplus", "netHouseSurplus"],
-        ].map(([label, key]) => (
-          <div className="summary-card" key={key}>
-            <h3 className="summary-card-title">{label}</h3>
-            <div className="account-summary-value">
-              {displayMoney(aggregateMetric(key))}
+        <div className="summary-card">
+          <h3 className="summary-card-title">Account balances</h3>
+          <div className="summary-card-metrics summary-card-metrics--two">
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Account value</div>
+              <div className="summary-metric-val">
+                {displayMoney(aggregateMetric("totalAccountValue"))}
+              </div>
+            </div>
+            <div className="summary-card-divider" />
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Cash balance</div>
+              <div className="summary-metric-val">
+                {displayMoney(aggregateMetric("cashBalance"))}
+              </div>
             </div>
           </div>
-        ))}
+        </div>
+
+        <div className="summary-card">
+          <h3 className="summary-card-title">Net surplus</h3>
+          <div className="summary-card-metrics summary-card-metrics--formula">
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Marginable securities</div>
+              <div className="summary-metric-val">
+                {displayMoney(aggregateMetric("marginableSecurities"))}
+              </div>
+            </div>
+            <span className="summary-formula-operator" aria-hidden="true">-</span>
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">House requirement</div>
+              <div className="summary-metric-val">
+                {displayMoney(aggregateMetric("houseRequirement"))}
+              </div>
+            </div>
+            <span className="summary-formula-operator" aria-hidden="true">=</span>
+            <div className="summary-metric-item">
+              <div className="summary-metric-label">Net surplus</div>
+              <div className="summary-metric-val">
+                {displayMoney(aggregateMetric("netHouseSurplus"))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="account-overview-list">
-        {accountRows.map(({ account, metrics }) => (
+        {accountRows.map(({ account, legs: accountLegs, metrics }) => (
           <section className="account-overview" key={account.id}>
             <h3>{account.name || "Unnamed account"}</h3>
 
@@ -772,43 +1199,37 @@ export default function AccountTab({
               </span>
             </div>
 
-            <AccountRiskChart
-              accountName={account.name || "Unnamed account"}
-              data={metrics.riskScenarios}
-              complete={metrics.riskScenariosComplete}
+            <AccountRiskWhatIf
+              account={account}
+              legs={accountLegs}
+              metrics={metrics}
+              marks={positionMarks}
+              underlyingPrices={underlyingPrices}
+              date={markDate}
             />
 
-            <div className="account-position-list">
-              <div className="account-position-header">
-                <span>Position</span>
-                <span>Margin requirement</span>
-              </div>
-
-              {metrics.marginEstimate.positions.map((item) => {
-                const leg = metrics.activeLegs.find(
-                  (candidate) => String(candidate.id) === item.legId
-                );
-                if (!leg) return null;
-
-                return (
-                  <div
-                    className={`account-position-row`}
-                    key={item.legId}
-                  >
-                    <span>
-                      {leg.ticker} {leg.type} {leg.qty}
-                      {leg.strike ? ` @ ${leg.strike}` : ""}
-                    </span>
-                    <strong>{displayMoney(item.requiredMargin)}</strong>
-                  </div>
-                );
-              })}
-            </div>
           </section>
         ))}
       </div>
 
-      <div className="card cash-adjustments">
+      <div className="cash-adjustments-section">
+        <button
+          type="button"
+          className="cash-adjustments-toggle"
+          aria-expanded={showCashAdjustments}
+          onClick={() => {
+            if (showCashAdjustments) {
+              setEditingCashTransaction(null);
+              setShowCashAdjustment(false);
+            }
+            setShowCashAdjustments((open) => !open);
+          }}
+        >
+          {showCashAdjustments ? "Hide cash adjustments" : "View/add cash adjustments"}
+        </button>
+
+        {showCashAdjustments && (
+          <div className="card cash-adjustments">
         <div className="cash-adjustments-header">
           <h3>Cash adjustments</h3>
       
@@ -909,6 +1330,7 @@ export default function AccountTab({
                   onClick={() => {
                     setSelectedAccountIdState(item.accountId);
                     setEditingCashTransaction(item);
+                    setShowCashAdjustments(true);
                     setShowCashAdjustment(true);
                   }}
                 >
@@ -925,6 +1347,8 @@ export default function AccountTab({
           )}
         </div>
       </div>
+        )}
+      </div>
 
       <form className="card" onSubmit={handleSaveMarks}>
         <h3>Position marks</h3>
@@ -937,6 +1361,7 @@ export default function AccountTab({
           </button>
         </div>
 
+        <h4 className="account-mark-section-title">Marks</h4>
         {positionRows.length === 0 ? (
           <p>No positions are open on this date.</p>
         ) : (
@@ -966,27 +1391,34 @@ export default function AccountTab({
             </div>
           ))
         )}
-        {optionTickers.map((ticker) => (
-          <div className="form-row" key={`underlying-${ticker}`}>
-            <label htmlFor={`underlying-${ticker}`}>
-              {ticker} underlying stock price
-            </label>
-            <input
-              id={`underlying-${ticker}`}
-              className="input"
-              type="number"
-              min="0"
-              step="0.01"
-              value={underlyingPrices[ticker] ?? ""}
-              onChange={(event) =>
-                updateUnderlyingPrice(ticker, event.target.value)
-              }
-            />
-          </div>
-        ))}
 
+        <h4 className="account-mark-section-title">Underlying prices</h4>
+        {optionTickers.length === 0 ? (
+          <p>No open options require an underlying price.</p>
+        ) : (
+          optionTickers.map((ticker) => (
+            <div className="form-row" key={`underlying-${ticker}`}>
+              <label htmlFor={`underlying-${ticker}`}>
+                {ticker} underlying stock price
+              </label>
+              <input
+                id={`underlying-${ticker}`}
+                className="input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={underlyingPrices[ticker] ?? ""}
+                onChange={(event) =>
+                  updateUnderlyingPrice(ticker, event.target.value)
+                }
+              />
+            </div>
+          ))
+        )}
+
+        <h4 className="account-mark-section-title">Stock-price scenario</h4>
         <div className="form-row">
-          <label htmlFor="scenario-shock">Stock-price scenario (%)</label>
+          <label htmlFor="scenario-shock">Shock size (%)</label>
           <input
             id="scenario-shock"
             className="input"
