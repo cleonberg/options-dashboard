@@ -11,6 +11,19 @@ const MARGIN_RATIO_BY_TICKER = new Map([
   ["SOXL", 0.6],
 ]);
 
+export const ACCOUNT_TYPE_OPTIONS = [
+  { value: "taxable", label: "Taxable brokerage (Reg-T)" },
+  { value: "roth_ira", label: "Roth IRA" },
+  { value: "traditional_ira", label: "Traditional IRA" },
+  { value: "401k", label: "401(k)" },
+];
+
+const FULL_COLLATERAL_ACCOUNT_TYPES = new Set([
+  "roth_ira",
+  "traditional_ira",
+  "401k",
+]);
+
 /* -------------------------------------------------------
    Formatting Helpers
 ------------------------------------------------------- */
@@ -578,14 +591,16 @@ export function computeWeeklyCashFlowSeries(dailySeries = []) {
     }));
 }
 
-function getMarginRatio(leg) {
+function getMarginRatio(leg, accountType = "taxable") {
+  if (FULL_COLLATERAL_ACCOUNT_TYPES.has(accountType)) return 1;
+
   const ticker = String(leg.ticker ?? "").trim().toUpperCase();
   return MARGIN_RATIO_BY_TICKER.get(ticker) ?? DEFAULT_MARGIN_RATIO;
 }
 
-function standaloneMargin(leg, quantity) {
+function standaloneMargin(leg, quantity, accountType) {
   const { type, strike, openPrice } = leg;
-  const marginRatio = getMarginRatio(leg);
+  const marginRatio = getMarginRatio(leg, accountType);
 
   if (!Number.isFinite(quantity) || quantity <= 0) return null;
 
@@ -699,7 +714,10 @@ function buildMarginRuntime(legs) {
   return { normalized, eventsByDay, anchorDays };
 }
 
-function evaluateMarginFromActiveLegs(activeLegs) {
+function evaluateMarginFromActiveLegs(
+  activeLegs,
+  accountTypeByCampaign = new Map()
+) {
   const byCampaign = {};
   const consumedQuantityByLegKey = new Map();
   const spreadGroups = new Map();
@@ -766,7 +784,9 @@ function evaluateMarginFromActiveLegs(activeLegs) {
 
     if (!Number.isFinite(remaining) || remaining <= 0) continue;
 
-    const amount = standaloneMargin(leg.source, remaining);
+    const accountType =
+      accountTypeByCampaign.get(leg.campaignId) || "taxable";
+    const amount = standaloneMargin(leg.source, remaining, accountType);
 
     if (amount == null) {
       unsupportedLegs.push(leg.source);
@@ -793,7 +813,11 @@ function isLegActiveOnDay(leg, day) {
   return true;
 }
 
-export function computeMarginEstimate(legs = [], asOfDate = new Date()) {
+export function computeMarginEstimate(
+  legs = [],
+  asOfDate = new Date(),
+  accountTypeByCampaign = new Map()
+) {
   const day = getCalendarDay(asOfDate);
   if (!day) {
     return {
@@ -806,12 +830,16 @@ export function computeMarginEstimate(legs = [], asOfDate = new Date()) {
 
   const runtime = buildMarginRuntime(legs);
   const activeLegs = runtime.normalized.filter((leg) => isLegActiveOnDay(leg, day));
-  return evaluateMarginFromActiveLegs(activeLegs);
+  return evaluateMarginFromActiveLegs(activeLegs, accountTypeByCampaign);
 }
 
 export function computeMarginHistorySeries(
   legs = [],
-  { startDate = "", endDate = "" } = {}
+  {
+    startDate = "",
+    endDate = "",
+    accountTypeByCampaign = new Map(),
+  } = {}
 ) {
   const runtime = buildMarginRuntime(legs);
   const today = getCalendarDay(new Date());
@@ -869,7 +897,10 @@ export function computeMarginHistorySeries(
       }
     }
 
-    const snapshot = evaluateMarginFromActiveLegs(Array.from(activeMap.values()));
+    const snapshot = evaluateMarginFromActiveLegs(
+      Array.from(activeMap.values()),
+      accountTypeByCampaign
+    );
 
     output.push({
       date: day,
@@ -903,6 +934,7 @@ export function computeAccountMarginEstimate(
     underlyingPrices = {},
     shockPercent = 0,
     minimumMarginRatio = 0.10,
+    accountType = "taxable",
   } = {}
 ) {
   const day = getCalendarDay(asOfDate);
@@ -1019,7 +1051,7 @@ export function computeAccountMarginEstimate(
       continue;
     }
 
-    const ratio = getMarginRatio(source);
+    const ratio = getMarginRatio(source, accountType);
     const multiplier = 1 + shock / 100;
     let standalone = null;
 

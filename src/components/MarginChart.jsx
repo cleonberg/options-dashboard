@@ -31,6 +31,7 @@ const tooltipFormatter = (value) => [
 
 export default function MarginChart({
   legs = [],
+  accountTypeByCampaign = new Map(),
   startDateFilter = "",
   endDateFilter = "",
 }) {
@@ -39,8 +40,9 @@ export default function MarginChart({
       computeMarginHistorySeries(legs, {
         startDate: startDateFilter,
         endDate: endDateFilter,
+        accountTypeByCampaign,
       }),
-    [legs, startDateFilter, endDateFilter]
+    [legs, accountTypeByCampaign, startDateFilter, endDateFilter]
   );
 
   if (data.length === 0) {

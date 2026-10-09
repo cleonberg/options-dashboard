@@ -134,6 +134,24 @@ export default function DashboardTab({
     });
   }, [accountFilteredCampaigns, legs]);
 
+  const accountTypeByCampaign = useMemo(() => {
+    const accountTypeById = new Map(
+      accounts.map((account) => [
+        normalizeId(account.id),
+        account.accountType || "taxable",
+      ])
+    );
+
+    return new Map(
+      accountFilteredCampaigns.map((campaign) => [
+        String(campaign.id),
+        accountTypeById.get(
+          normalizeId(campaign.accountId || defaultAccountId)
+        ) || "taxable",
+      ])
+    );
+  }, [accounts, accountFilteredCampaigns, defaultAccountId]);
+
   // Search filter only. Date filters are applied to transaction dates below.
   const searchFilteredCampaigns = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
@@ -200,7 +218,9 @@ export default function DashboardTab({
   const peakMarginByCampaign = useMemo(() => {
     const peaks = new Map();
 
-    for (const day of computeMarginHistorySeries(accountFilteredLegs)) {
+    for (const day of computeMarginHistorySeries(accountFilteredLegs, {
+      accountTypeByCampaign,
+    })) {
       for (const [campaignId, margin] of Object.entries(day.byCampaign)) {
         const value = Number(margin);
         if (!Number.isFinite(value)) continue;
@@ -213,7 +233,7 @@ export default function DashboardTab({
     }
 
     return peaks;
-  }, [accountFilteredLegs]);
+  }, [accountFilteredLegs, accountTypeByCampaign]);
 
   // Legs used for transaction-level metrics. Search applies, campaign
   // startDate does not.
@@ -279,7 +299,11 @@ export default function DashboardTab({
       (leg) => leg.isOpen && openCampaignIds.has(normalizeId(leg.campaignId))
     );
   
-    const totalMargin = computeMarginEstimate(openLegs).total;
+    const totalMargin = computeMarginEstimate(
+      openLegs,
+      undefined,
+      accountTypeByCampaign
+    ).total;
     const unrealizedPL = computeCampaignProjectedPL(openLegs);
   
     let weightedAromTotal = 0;
@@ -323,6 +347,7 @@ export default function DashboardTab({
   }, [
     open,
     accountFilteredLegs,
+    accountTypeByCampaign,
     legsByCampaign,
     peakMarginByCampaign,
     searchFilteredLegs
@@ -591,6 +616,7 @@ export default function DashboardTab({
         <Suspense fallback={<div className="card">Loading margin chart...</div>}>
           <MarginChart
             legs={searchFilteredLegs}
+            accountTypeByCampaign={accountTypeByCampaign}
             startDateFilter={startDateFilter}
             endDateFilter={endDateFilter}
           />
@@ -736,6 +762,7 @@ export default function DashboardTab({
           campaigns={open}
           legs={accountFilteredLegs}
           peakMarginByCampaign={peakMarginByCampaign}
+          accountTypeByCampaign={accountTypeByCampaign}
           onSelect={onSelectCampaign}
           accounts={accounts}
           defaultAccountId={defaultAccountId}
@@ -795,6 +822,7 @@ export default function DashboardTab({
                 campaigns={closed}
                 legs={accountFilteredLegs}
                 peakMarginByCampaign={peakMarginByCampaign}
+                accountTypeByCampaign={accountTypeByCampaign}
                 onSelect={onSelectCampaign}
                 accounts={accounts}
                 defaultAccountId={defaultAccountId}

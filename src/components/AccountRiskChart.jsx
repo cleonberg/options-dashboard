@@ -86,6 +86,7 @@ export default function AccountRiskChart({
               <Legend />
               <Tooltip
                 cursor={false}
+                wrapperStyle={{ maxWidth: "calc(100vw - 24px)" }}
                 labelFormatter={(value) =>
                   `Price scenario: ${formatPercent(Number(value))}`
                 }
@@ -94,10 +95,14 @@ export default function AccountRiskChart({
                   name,
                 ]}
                 contentStyle={{
-                  backgroundColor: "#1b2b4f",
+                  backgroundColor: "rgba(27, 43, 79, 0.8)",
                   border: "1px solid #24345f",
                   borderRadius: "6px",
                   color: "#fff",
+                  boxSizing: "border-box",
+                  maxWidth: "calc(100vw - 24px)",
+                  whiteSpace: "normal",
+                  overflowWrap: "anywhere",
                 }}
               />
               {comparing && (

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ACCOUNT_TYPE_OPTIONS,
   computeAccountMarginEstimate,
   fmtWholeDollars,
   optionIntrinsic,
@@ -80,6 +81,7 @@ function calculateAccountRiskScenarios({
   marks,
   underlyingPrices,
   date,
+  accountType = "taxable",
 }) {
   return Array.from({ length: 15 }, (_, index) => -50 + index * 5).map(
     (shockPercent) => {
@@ -136,6 +138,7 @@ function calculateAccountRiskScenarios({
         positionMarks: marks,
         underlyingPrices,
         shockPercent,
+        accountType,
       });
 
       if (!marginEstimate.complete || marginEstimate.total == null) {
@@ -168,6 +171,7 @@ function calculateWhatIfRiskScenarios({
   marks,
   underlyingPrices,
   date,
+  accountType = "taxable",
 }) {
   let whatIfCashBalance = cashBalance;
   const closedIds = new Set(closedLegIds);
@@ -230,6 +234,7 @@ function calculateWhatIfRiskScenarios({
     marks: simulatedMarks,
     underlyingPrices: simulatedUnderlyingPrices,
     date,
+    accountType,
   });
 }
 
@@ -336,6 +341,7 @@ function calculateAccountMetrics({
     asOfDate: date,
     positionMarks: marks,
     underlyingPrices,
+    accountType: account.accountType || "taxable",
   };
   const marginEstimate = computeAccountMarginEstimate(legs, marginArgs);
   const marginDown = computeAccountMarginEstimate(legs, {
@@ -366,6 +372,7 @@ function calculateAccountMetrics({
     marks,
     underlyingPrices,
     date,
+    accountType: account.accountType || "taxable",
   });
 
   return {
@@ -440,6 +447,7 @@ function AccountRiskWhatIf({
         marks,
         underlyingPrices,
         date,
+        accountType: account.accountType || "taxable",
       })
     : metrics.riskScenarios;
   const complete = whatIfData.every((point) =>
@@ -843,6 +851,7 @@ export default function AccountTab({
 
     const id = await createAccount(uid, {
       name: accountName,
+      accountType: String(form.get("accountType") || "taxable"),
       currency: "USD",
       openingCash: Number(form.get("openingCash")),
       openingCashDate: String(form.get("openingCashDate")),
@@ -861,6 +870,7 @@ export default function AccountTab({
     await saveAccountRecord(uid, "accounts", {
       ...selectedAccount,
       name: String(form.get("name") || "").trim(),
+      accountType: String(form.get("accountType") || "taxable"),
       currency: selectedAccount.currency || "USD",
       openingCash: Number(form.get("openingCash")),
       openingCashDate: String(form.get("openingCashDate")),
@@ -1058,6 +1068,18 @@ export default function AccountTab({
           <h3>Add account</h3>
           <div className="form-row">
             <input className="input" name="name" required placeholder="Account name" />
+            <select
+              className="input"
+              name="accountType"
+              aria-label="Account type"
+              defaultValue="taxable"
+            >
+              {ACCOUNT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <input
               className="input"
               name="openingCash"
@@ -1093,6 +1115,18 @@ export default function AccountTab({
               defaultValue={selectedAccount.name ?? ""}
               placeholder="Account name"
             />
+            <select
+              className="input"
+              name="accountType"
+              aria-label="Account type"
+              defaultValue={selectedAccount.accountType || "taxable"}
+            >
+              {ACCOUNT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <input
               className="input"
               name="openingCash"

@@ -44,6 +44,7 @@ export function getDefaultAccountId(uid, accounts = []) {
 function normalizeAccountRecord(raw) {
   return {
     ...raw,
+    accountType: raw.accountType || "taxable",
     deleted: !!raw.deleted,
     dirty: !!raw.dirty,
     updatedAt: toMillis(raw.updatedAt) ?? Date.now(),

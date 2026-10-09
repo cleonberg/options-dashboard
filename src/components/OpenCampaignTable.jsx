@@ -29,6 +29,7 @@ export default function OpenCampaignTable({
   campaigns,
   legs,
   peakMarginByCampaign,
+  accountTypeByCampaign = new Map(),
   onSelect,
   accounts = [],
   defaultAccountId = "",
@@ -132,8 +133,13 @@ export default function OpenCampaignTable({
   );
 
   const marginByCampaign = useMemo(
-    () => computeMarginEstimate(openLegs).byCampaign,
-    [openLegs]
+    () =>
+      computeMarginEstimate(
+        openLegs,
+        undefined,
+        accountTypeByCampaign
+      ).byCampaign,
+    [openLegs, accountTypeByCampaign]
   );
 
   const sortedCampaigns = useMemo(() => {
