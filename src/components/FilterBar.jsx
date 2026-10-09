@@ -16,7 +16,10 @@ export default function FilterBar({
     startDateFilter = "",
     setStartDateFilter,
     endDateFilter = "",
-    setEndDateFilter
+    setEndDateFilter,
+    accounts = [],
+    selectedAccountId = "all",
+    setSelectedAccountId
 }) {
     const [showDateFilters, setShowDateFilters] = useState(false);
     const [activeDatePreset, setActiveDatePreset] = useState("ytd");
@@ -58,13 +61,15 @@ export default function FilterBar({
         setSearchTerm?.("");
         setStartDateFilter?.("");
         setEndDateFilter?.("");
+        setSelectedAccountId?.("all");
         setActiveDatePreset("all");
     };
 
     const hasActiveFilters =
         Boolean(searchTerm) ||
         Boolean(startDateFilter) ||
-        Boolean(endDateFilter);
+        Boolean(endDateFilter) ||
+        selectedAccountId !== "all";
 
     const activeLabel =
         activeDatePreset === "custom"
@@ -85,6 +90,27 @@ export default function FilterBar({
                         }
                         aria-label="Filter by ticker or symbol"
                     />
+                </div>
+
+                <div className="filter-account">
+                    <select
+                        id="filter-account-select"
+                        className="input"
+                        aria-label="Filter by account"
+                        title="An asterisk marks the default account."
+                        value={selectedAccountId}
+                        onChange={(event) =>
+                            setSelectedAccountId?.(event.target.value)
+                        }
+                    >
+                        <option value="all">All accounts</option>
+                        {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                                {account.name || "Unnamed account"}
+                                {account.isDefault ? " *" : ""}
+                            </option>
+                        ))}
+                    </select>
                 </div>
 
                 {hasActiveFilters && (

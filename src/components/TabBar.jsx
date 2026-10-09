@@ -4,7 +4,6 @@ export default function TabBar({ activeTab, setActiveTab }) {
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
     { id: "trades", label: "Trades" },
-    { id: "campaigns", label: "Campaigns" },
     { id: "account", label: "Accounts" },
     { id: "settings", label: "Settings" }
   ];

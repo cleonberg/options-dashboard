@@ -719,10 +719,9 @@ export default function AccountTab({
   legs = [],
   cashTransactions = [],
   accountSnapshots = [],
+  selectedAccountId: selectedAccountIdProp = "all",
+  onSelectedAccountChange,
 }) {
-  const [selectedAccountIdState, setSelectedAccountIdState] = useState(
-    defaultAccountId || "all"
-  );
   const [markDate, setMarkDate] = useState(today());
   const [markEdits, setMarkEdits] = useState(null);
   const [editingCashTransaction, setEditingCashTransaction] = useState(null);
@@ -734,12 +733,10 @@ export default function AccountTab({
   const [scenarioShockPct, setScenarioShockPct] = useState(10);
 
   const selectedAccountId =
-    selectedAccountIdState !== "all" &&
-    !accounts.some((account) => account.id === selectedAccountIdState)
-      ? accounts.some((account) => account.id === defaultAccountId)
-        ? defaultAccountId
-        : "all"
-      : selectedAccountIdState;
+    selectedAccountIdProp === "all" ||
+    accounts.some((account) => String(account.id) === selectedAccountIdProp)
+      ? selectedAccountIdProp
+      : "all";
   const selectedAccount = accounts.find(
     (account) => account.id === selectedAccountId
   );
@@ -852,7 +849,7 @@ export default function AccountTab({
     });
 
     formElement.reset();
-    setSelectedAccountIdState(id);
+    onSelectedAccountChange?.(id);
     setShowAddAccount(false);
   }
 
@@ -880,7 +877,7 @@ export default function AccountTab({
 
     try {
       await deleteAccount(uid, selectedAccount.id);
-      setSelectedAccountIdState(defaultAccountId || "all");
+      onSelectedAccountChange?.("all");
     } catch (error) {
       window.alert(error.message || "Could not delete the account.");
     }
@@ -1009,9 +1006,10 @@ export default function AccountTab({
           <select
             id="account-select"
             className="input account-picker"
+            title="An asterisk marks the default account."
             value={selectedAccountId}
             onChange={(event) => {
-              setSelectedAccountIdState(event.target.value);
+              onSelectedAccountChange?.(event.target.value);
               setShowAccountEdit(false);
               setEditingCashTransaction(null);
               setShowCashAdjustments(false);
@@ -1022,7 +1020,7 @@ export default function AccountTab({
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name || "Unnamed account"}
-                {account.isDefault ? " (Default)" : ""}
+                {account.isDefault ? " *" : ""}
               </option>
             ))}
           </select>
@@ -1328,7 +1326,7 @@ export default function AccountTab({
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedAccountIdState(item.accountId);
+                    onSelectedAccountChange?.(item.accountId);
                     setEditingCashTransaction(item);
                     setShowCashAdjustments(true);
                     setShowCashAdjustment(true);

@@ -7,6 +7,7 @@ import {
   getCalendarDay,
   computeAROM,
 } from "../logic/logic.js";
+import CampaignAccountBadge from "./CampaignAccountBadge.jsx";
 
 function toSortableNumber(value, fallback = 0) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -21,7 +22,14 @@ function formatShortDate(value) {
   return `${Number(month)}/${Number(day)}/${year.slice(-2)}`;
 }
 
-export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampaign, onSelect }) {
+export default function ClosedCampaignTable({
+  campaigns,
+  legs,
+  peakMarginByCampaign,
+  onSelect,
+  accounts = [],
+  defaultAccountId = "",
+}) {
   const [sortConfig, setSortConfig] = useState({
     field: "endDate",
     direction: "desc"
@@ -36,6 +44,17 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
           : "asc"
     }));
   };
+
+  const accountsById = useMemo(
+    () =>
+      new Map(
+        accounts.map((account) => [
+          String(account.id).trim().toLowerCase(),
+          account,
+        ])
+      ),
+    [accounts]
+  );
 
   const campaignLegsMap = useMemo(() => {
     const map = new Map();
@@ -244,6 +263,10 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
               (durationDays / maxDurationDays) * 100
             );
             const realizedPL = metrics?.realizedPL ?? 0;
+            const accountId = campaign.accountId || defaultAccountId;
+            const account = accountsById.get(
+              String(accountId || "").trim().toLowerCase()
+            );
 
             return (
               <tr
@@ -253,6 +276,10 @@ export default function ClosedCampaignTable({ campaigns, legs, peakMarginByCampa
                 style={{ cursor: "pointer" }}
               >
                 <td className="campaign-name-cell">
+                  <CampaignAccountBadge
+                    account={account}
+                    accountId={accountId}
+                  />
                   <span style={{ fontWeight: "bold" }}>
                     {campaign.name || campaign.ticker || "Unnamed"}
                   </span>

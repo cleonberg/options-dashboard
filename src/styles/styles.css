@@ -648,6 +648,29 @@ button.secondary:hover {
   margin: 0;
 }
 
+.closed-campaigns-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.closed-campaigns-heading .secondary {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  margin-top: -12px;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.closed-campaign-history:not([hidden]) {
+  margin-top: 12px;
+}
+
 .summary-card-metrics {
   display: grid;
   gap: 10px;
@@ -971,6 +994,23 @@ button.secondary:hover {
   min-width: 0;
 }
 
+.filter-account {
+  display: flex;
+  flex: 0 1 220px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  order: 1;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.filter-account .input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
 .filter-search .input {
   box-sizing: border-box;
   width: 100%;
@@ -988,7 +1028,7 @@ button.secondary:hover {
   flex: 0 1 auto;
   gap: 4px;
   min-width: 0;
-  order: 1;
+  order: 2;
 }
 
 .quick-filter {
@@ -1007,7 +1047,11 @@ button.secondary:hover {
 .date-filter-dropdown {
   position: relative;
   flex: 0 0 auto;
-  order: 2;
+  order: 3;
+}
+
+.clear-filter {
+  order: 4;
 }
 
 .date-filter-toggle {
@@ -1118,7 +1162,7 @@ button.secondary:hover {
 
   .filter-primary-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(90px, 1fr) minmax(90px, 0.8fr) auto;
     gap: 6px;
   }
 
@@ -1217,6 +1261,25 @@ button.secondary:hover {
 .campaign-table th:first-child,
 .campaign-table td:first-child {
   text-align: left;
+}
+
+.campaign-account-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  min-width: 22px;
+  height: 18px;
+  margin-right: 4px;
+  padding: 0 2px;
+  border: 1px solid;
+  border-radius: 5px;
+  color: #f8fafc;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .campaign-table .progress-container {

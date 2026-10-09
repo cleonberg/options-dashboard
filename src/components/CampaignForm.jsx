@@ -62,13 +62,14 @@ export default function CampaignForm({
           />
           <select
             className="input"
+            title="An asterisk marks the default account."
             value={accountId}
             onChange={(event) => setAccountId(event.target.value)}
             required
           >
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name}{account.isDefault ? " (Default)" : ""}
+                {account.name}{account.isDefault ? " *" : ""}
               </option>
             ))}
           </select>

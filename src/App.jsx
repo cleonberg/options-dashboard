@@ -76,6 +76,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+  const [selectedAccountIdState, setSelectedAccountId] = useState("all");
 
   const [syncStatus, setSyncStatus] = useState("synced");
   const [lastSync, setLastSync] = useState(null);
@@ -87,6 +88,12 @@ export default function App() {
   const [endDateFilter, setEndDateFilter] = useState(() =>
     toISODateStr(new Date())
   );
+
+  const selectedAccountId =
+    selectedAccountIdState === "all" ||
+    accounts.some((account) => String(account.id) === selectedAccountIdState)
+      ? selectedAccountIdState
+      : "all";
 
   const dashboardSummary = useMemo(
     () => computeDashboardSummary(campaigns, legs),
@@ -186,6 +193,7 @@ export default function App() {
             searchTerm={searchTerm}
             startDateFilter={startDateFilter}
             endDateFilter={endDateFilter}
+            selectedAccountId={selectedAccountId}
           />
         );
 
@@ -194,10 +202,12 @@ export default function App() {
           <AllLegsTab
             campaigns={campaigns}
             legs={legs}
+            defaultAccountId={defaultAccountId}
             uid={uid}
             searchTerm={searchTerm}
             startDateFilter={startDateFilter}
             endDateFilter={endDateFilter}
+            selectedAccountId={selectedAccountId}
           />
         );
 
@@ -224,6 +234,8 @@ export default function App() {
             legs={legs}
             cashTransactions={cashTransactions}
             accountSnapshots={accountSnapshots}
+            selectedAccountId={selectedAccountId}
+            onSelectedAccountChange={setSelectedAccountId}
           />
         );
 
@@ -258,6 +270,9 @@ export default function App() {
                 setStartDateFilter={setStartDateFilter}
                 endDateFilter={endDateFilter}
                 setEndDateFilter={setEndDateFilter}
+                accounts={accounts}
+                selectedAccountId={selectedAccountId}
+                setSelectedAccountId={setSelectedAccountId}
               />
             </div>
           )}

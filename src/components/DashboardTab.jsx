@@ -13,13 +13,13 @@ import {
 } from "../logic/logic.js";
 
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
-import ClosedCampaignTable from "./ClosedCampaignTable.jsx";
 import PerformanceChart from "./PerformanceChart.jsx";
 import CombinedCashFlowChart from "./CombinedCashFlowChart.jsx";
 import WeeklyCashFlowChart from "./WeeklyCashFlowChart.jsx";
 import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
 import CampaignForm from "./CampaignForm.jsx";
 const MarginChart = lazy(() => import("./MarginChart.jsx"));
+const ClosedCampaignTable = lazy(() => import("./ClosedCampaignTable.jsx"));
 
 function normalizeId(id) {
   return id == null ? null : String(id).trim().toLowerCase();
@@ -74,6 +74,7 @@ export default function DashboardTab({
   legs = [],
   accounts = [],
   defaultAccountId = "",
+  selectedAccountId = "all",
   summary,
   onSelectCampaign,
   onAddCampaign,
@@ -84,6 +85,10 @@ export default function DashboardTab({
   const [showCombineModal, setShowCombineModal] = useState(false);
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
   const [activeChart, setActiveChart] = useState("cashflow");
+  const [isClosedCampaignsExpanded, setIsClosedCampaignsExpanded] =
+    useState(false);
+  const [hasOpenedClosedCampaigns, setHasOpenedClosedCampaigns] =
+    useState(false);
 
   const legsByCampaign = useMemo(() => {
     const map = new Map();
@@ -103,12 +108,38 @@ export default function DashboardTab({
     return map;
   }, [legs]);
 
+  const accountFilteredCampaigns = useMemo(
+    () =>
+      selectedAccountId === "all"
+        ? campaigns
+        : campaigns.filter((campaign) =>
+            isSameId(
+              campaign.accountId || defaultAccountId,
+              selectedAccountId
+            )
+          ),
+    [campaigns, defaultAccountId, selectedAccountId]
+  );
+
+  const accountFilteredLegs = useMemo(() => {
+    const campaignIds = new Set(
+      accountFilteredCampaigns
+        .map((campaign) => normalizeId(campaign.id))
+        .filter((campaignId) => campaignId !== null)
+    );
+
+    return legs.filter((leg) => {
+      const campaignId = normalizeId(leg.campaignId);
+      return campaignId !== null && campaignIds.has(campaignId);
+    });
+  }, [accountFilteredCampaigns, legs]);
+
   // Search filter only. Date filters are applied to transaction dates below.
   const searchFilteredCampaigns = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return campaigns;
+    if (!term) return accountFilteredCampaigns;
   
-    return campaigns.filter((campaign) => {
+    return accountFilteredCampaigns.filter((campaign) => {
       const matchesCampaign = [campaign.name, campaign.ticker]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
@@ -125,7 +156,7 @@ export default function DashboardTab({
           .some((value) => String(value).toLowerCase().includes(term))
       );
     });
-  }, [campaigns, legsByCampaign, searchTerm]);
+  }, [accountFilteredCampaigns, legsByCampaign, searchTerm]);
 
   // Campaign filtering used by the tables.
   const filteredCampaigns = useMemo(() => {
@@ -169,7 +200,7 @@ export default function DashboardTab({
   const peakMarginByCampaign = useMemo(() => {
     const peaks = new Map();
 
-    for (const day of computeMarginHistorySeries(legs)) {
+    for (const day of computeMarginHistorySeries(accountFilteredLegs)) {
       for (const [campaignId, margin] of Object.entries(day.byCampaign)) {
         const value = Number(margin);
         if (!Number.isFinite(value)) continue;
@@ -182,7 +213,7 @@ export default function DashboardTab({
     }
 
     return peaks;
-  }, [legs]);
+  }, [accountFilteredLegs]);
 
   // Legs used for transaction-level metrics. Search applies, campaign
   // startDate does not.
@@ -193,12 +224,12 @@ export default function DashboardTab({
       )
     );
 
-    return legs.filter((leg) =>
+    return accountFilteredLegs.filter((leg) =>
       filteredIds.has(
         String(leg.campaignId || "").trim().toLowerCase()
       )
     );
-  }, [searchFilteredCampaigns, legs]);
+  }, [searchFilteredCampaigns, accountFilteredLegs]);
 
   const dashboardDailyCashFlowSeries = useMemo(
     () =>
@@ -244,7 +275,7 @@ export default function DashboardTab({
       open.map((campaign) => normalizeId(campaign.id))
     );
   
-    const openLegs = legs.filter(
+    const openLegs = accountFilteredLegs.filter(
       (leg) => leg.isOpen && openCampaignIds.has(normalizeId(leg.campaignId))
     );
   
@@ -291,7 +322,7 @@ export default function DashboardTab({
     };
   }, [
     open,
-    legs,
+    accountFilteredLegs,
     legsByCampaign,
     peakMarginByCampaign,
     searchFilteredLegs
@@ -304,7 +335,7 @@ export default function DashboardTab({
         .filter((campaignId) => campaignId !== null)
     );
 
-    const filteredLegs = legs.filter((leg) => {
+    const filteredLegs = accountFilteredLegs.filter((leg) => {
       const campaignId = normalizeId(leg.campaignId);
       return campaignId !== null && filteredCampaignIds.has(campaignId);
     });
@@ -318,7 +349,7 @@ export default function DashboardTab({
       closedCampaigns: closed.length
     };
   }, [
-    legs,
+    accountFilteredLegs,
     filteredCampaigns,
     filteredNetPL,
     filteredNetCashFlow,
@@ -386,7 +417,10 @@ export default function DashboardTab({
 
     const endDate = toISODateStr(now);
 
-    return computeDailyCashFlowSeries(legs, campaigns)
+    return computeDailyCashFlowSeries(
+      accountFilteredLegs,
+      accountFilteredCampaigns
+    )
       .filter(
         (day) =>
           day.date >= startDate &&
@@ -396,9 +430,9 @@ export default function DashboardTab({
         (sum, day) => sum + Number(day.netCashFlow || 0),
         0
       );
-  }, [legs, campaigns]);
+  }, [accountFilteredLegs, accountFilteredCampaigns]);
 
-  if (!summary && campaigns.length === 0) {
+  if (!summary && accountFilteredCampaigns.length === 0) {
     return <div className="card">Loading dashboard…</div>;
   }
 
@@ -564,7 +598,7 @@ export default function DashboardTab({
       ) : (
         <PerformanceChart
           closedCampaigns={closed}
-          legs={legs}
+          legs={searchFilteredLegs}
           mode="dashboard"
         />
       )}
@@ -664,7 +698,7 @@ export default function DashboardTab({
           <div className="add-leg-content">
             <div style={{ paddingBottom: "24px" }}>
               <CombineCampaignsModal
-                campaigns={campaigns}
+                campaigns={accountFilteredCampaigns}
                 uid={uid}
                 onClose={() => setShowCombineModal(false)}
               />
@@ -700,18 +734,32 @@ export default function DashboardTab({
 
         <OpenCampaignTable
           campaigns={open}
-          legs={legs}
+          legs={accountFilteredLegs}
           peakMarginByCampaign={peakMarginByCampaign}
           onSelect={onSelectCampaign}
+          accounts={accounts}
+          defaultAccountId={defaultAccountId}
         />
       </section>
 
       {/* Closed Campaigns */}
       <section>
         <div className="summary-card">
-          <h3 className="summary-card-title">
-            Closed Campaigns
-          </h3>
+          <div className="closed-campaigns-heading">
+            <h3 className="summary-card-title">Closed Campaigns</h3>
+            <button
+              type="button"
+              className="secondary"
+              aria-expanded={isClosedCampaignsExpanded}
+              aria-controls="closed-campaign-history"
+              onClick={() => {
+                setHasOpenedClosedCampaigns(true);
+                setIsClosedCampaignsExpanded((expanded) => !expanded);
+              }}
+            >
+              {isClosedCampaignsExpanded ? "Hide history" : "Show history"}
+            </button>
+          </div>
 
           <div className="summary-card-metrics summary-card-metrics--two">
             <div className="summary-metric-item">
@@ -736,12 +784,24 @@ export default function DashboardTab({
           </div>
         </div>
 
-        <ClosedCampaignTable
-          campaigns={closed}
-          legs={legs}
-          peakMarginByCampaign={peakMarginByCampaign}
-          onSelect={onSelectCampaign}
-        />
+        <div
+          id="closed-campaign-history"
+          className="closed-campaign-history"
+          hidden={!isClosedCampaignsExpanded}
+        >
+          {hasOpenedClosedCampaigns && (
+            <Suspense fallback={<div className="card">Loading closed campaign history…</div>}>
+              <ClosedCampaignTable
+                campaigns={closed}
+                legs={accountFilteredLegs}
+                peakMarginByCampaign={peakMarginByCampaign}
+                onSelect={onSelectCampaign}
+                accounts={accounts}
+                defaultAccountId={defaultAccountId}
+              />
+            </Suspense>
+          )}
+        </div>
       </section>
     </div>
   );

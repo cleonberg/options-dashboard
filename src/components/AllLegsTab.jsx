@@ -10,21 +10,48 @@ import {
 export default function AllLegsTab({
   campaigns = [],
   legs = [],
+  defaultAccountId = "",
   reloadAll,
   uid,
   searchTerm = "",
   startDateFilter = "",
   endDateFilter = "",
+  selectedAccountId = "all",
 }) {
   const [filterTicker, setFilterTicker] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortBy, setSortBy] = useState("openDateDesc");
 
+  const campaignById = useMemo(
+    () =>
+      new Map(
+        campaigns.map((campaign) => [
+          String(campaign.id).trim().toLowerCase(),
+          campaign,
+        ])
+      ),
+    [campaigns]
+  );
+
   const filteredLegs = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
 
     return legs.filter((l) => {
+      if (selectedAccountId !== "all") {
+        const campaign = campaignById.get(
+          String(l.campaignId || "").trim().toLowerCase()
+        );
+        const campaignAccountId = campaign?.accountId || defaultAccountId;
+        if (
+          !campaign ||
+          String(campaignAccountId || "").trim().toLowerCase() !==
+            String(selectedAccountId).trim().toLowerCase()
+        ) {
+          return false;
+        }
+      }
+
       if (filterTicker && l.ticker !== filterTicker) return false;
       if (filterType !== "all" && l.type !== filterType) return false;
 
@@ -66,7 +93,10 @@ export default function AllLegsTab({
       return false;
     });
   }, [
+    campaignById,
     legs,
+    defaultAccountId,
+    selectedAccountId,
     searchTerm,
     filterTicker,
     filterType,

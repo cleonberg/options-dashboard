@@ -10,6 +10,7 @@ import {
   getCampaignDuration,
 } from "../logic/logic.js";
 import DaysLeftProgressBar from "./DaysLeftProgressBar.jsx";
+import CampaignAccountBadge from "./CampaignAccountBadge.jsx";
 
 function toSortableNumber(value, fallback = Number.POSITIVE_INFINITY) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -24,8 +25,13 @@ function formatShortDate(value) {
   return `${Number(month)}/${Number(day)}/${year.slice(-2)}`;
 }
 
-export default function OpenCampaignTable({ 
-  campaigns, legs, peakMarginByCampaign, onSelect 
+export default function OpenCampaignTable({
+  campaigns,
+  legs,
+  peakMarginByCampaign,
+  onSelect,
+  accounts = [],
+  defaultAccountId = "",
 }) {
 
   const [sortConfig, setSortConfig] = useState({
@@ -42,6 +48,17 @@ export default function OpenCampaignTable({
           : "asc"
     }));
   };
+
+  const accountsById = useMemo(
+    () =>
+      new Map(
+        accounts.map((account) => [
+          String(account.id).trim().toLowerCase(),
+          account,
+        ])
+      ),
+    [accounts]
+  );
 
   const campaignLegsMap = useMemo(() => {
     const map = new Map();
@@ -240,6 +257,10 @@ export default function OpenCampaignTable({
               const daysLeft = metrics?.daysLeft ?? null;
               const projectedPL = metrics?.projectedPL ?? 0;
               const legCount = metrics?.legCount ?? 0;
+              const accountId = campaign.accountId || defaultAccountId;
+              const account = accountsById.get(
+                String(accountId || "").trim().toLowerCase()
+              );
 
               return (
                 <tr
@@ -249,6 +270,10 @@ export default function OpenCampaignTable({
                   style={{ cursor: "pointer" }}
                 >
                   <td className="campaign-name-cell">
+                    <CampaignAccountBadge
+                      account={account}
+                      accountId={accountId}
+                    />
                     <span style={{ fontWeight: "bold" }}>
                       {campaign.name}
                     </span>
