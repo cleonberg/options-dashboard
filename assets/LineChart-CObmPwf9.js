@@ -1,1 +1,0 @@
-import{J as e,Z as t}from"./index-B7AN5hX3.js";import{M as n,t as r}from"./CartesianChart-DCPnksAz.js";var i=t(e()),a=[`axis`],o=(0,i.forwardRef)((e,t)=>i.createElement(r,{chartName:`LineChart`,defaultTooltipEventType:`axis`,validateTooltipEventTypes:a,tooltipPayloadSearcher:n,categoricalChartProps:e,ref:t}));export{o as t};
