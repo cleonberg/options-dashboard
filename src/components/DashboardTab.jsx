@@ -1,24 +1,22 @@
 // DashboardTab.jsx
-import React, { lazy, Suspense, useState, useMemo } from "react";
+import { lazy, Suspense, useState, useMemo } from "react";
 import {
   fmtWholeDollars,
   cashClass,
   computeLegPL,
   computeDailyCashFlowSeries,
-  computeMarginHistorySeries,
+  computeAccountMarginHistorySeries,
+  computeAccountMarginByCampaign,
   computeCampaignProjectedPL,
-  computeMarginEstimate,
   computeAROM,
   getCampaignDuration
 } from "../logic/logic.js";
 
 import OpenCampaignTable from "./OpenCampaignTable.jsx";
-import PerformanceChart from "./PerformanceChart.jsx";
 import CombinedCashFlowChart from "./CombinedCashFlowChart.jsx";
 import WeeklyCashFlowChart from "./WeeklyCashFlowChart.jsx";
 import CombineCampaignsModal from "./CombineCampaignsModal.jsx";
 import CampaignForm from "./CampaignForm.jsx";
-const MarginChart = lazy(() => import("./MarginChart.jsx"));
 const ClosedCampaignTable = lazy(() => import("./ClosedCampaignTable.jsx"));
 
 function normalizeId(id) {
@@ -68,10 +66,28 @@ function getDateOnly(value) {
   return "";
 }
 
+function isStockLeg(leg) {
+  return String(leg.type || "").toLowerCase().includes("stock");
+}
+
+function sumRealizedPL(legs, startDateFilter, endDateFilter) {
+  return legs.reduce((total, leg) => {
+    if (leg.isOpen) return total;
+
+    const closeDate = getDateOnly(leg.closeDate);
+    if (!closeDate) return total;
+    if (startDateFilter && closeDate < startDateFilter) return total;
+    if (endDateFilter && closeDate > endDateFilter) return total;
+
+    return total + (computeLegPL(leg) ?? 0);
+  }, 0);
+}
+
 export default function DashboardTab({
   uid,
   campaigns = [],
   legs = [],
+  accountSnapshots = [],
   accounts = [],
   defaultAccountId = "",
   selectedAccountId = "all",
@@ -84,11 +100,11 @@ export default function DashboardTab({
 }) {
   const [showCombineModal, setShowCombineModal] = useState(false);
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
-  const [activeChart, setActiveChart] = useState("cashflow");
   const [isClosedCampaignsExpanded, setIsClosedCampaignsExpanded] =
     useState(false);
   const [hasOpenedClosedCampaigns, setHasOpenedClosedCampaigns] =
     useState(false);
+  const [performanceMode, setPerformanceMode] = useState("options");
 
   const legsByCampaign = useMemo(() => {
     const map = new Map();
@@ -134,6 +150,11 @@ export default function DashboardTab({
     });
   }, [accountFilteredCampaigns, legs]);
 
+  const accountFilteredOptionLegs = useMemo(
+    () => accountFilteredLegs.filter((leg) => !isStockLeg(leg)),
+    [accountFilteredLegs]
+  );
+
   const accountTypeByCampaign = useMemo(() => {
     const accountTypeById = new Map(
       accounts.map((account) => [
@@ -151,6 +172,35 @@ export default function DashboardTab({
       ])
     );
   }, [accounts, accountFilteredCampaigns, defaultAccountId]);
+
+  const marginRequirementOverridesByCampaign = useMemo(() => {
+    const overridesById = new Map(
+      accounts.map((account) => [
+        normalizeId(account.id),
+        account.marginRequirementOverrides || {},
+      ])
+    );
+
+    return new Map(
+      accountFilteredCampaigns.map((campaign) => [
+        String(campaign.id),
+        overridesById.get(
+          normalizeId(campaign.accountId || defaultAccountId)
+        ) || {},
+      ])
+    );
+  }, [accounts, accountFilteredCampaigns, defaultAccountId]);
+
+  const accountIdByCampaign = useMemo(
+    () =>
+      new Map(
+        accountFilteredCampaigns.map((campaign) => [
+          String(campaign.id),
+          campaign.accountId || defaultAccountId,
+        ])
+      ),
+    [accountFilteredCampaigns, defaultAccountId]
+  );
 
   // Search filter only. Date filters are applied to transaction dates below.
   const searchFilteredCampaigns = useMemo(() => {
@@ -218,11 +268,17 @@ export default function DashboardTab({
   const peakMarginByCampaign = useMemo(() => {
     const peaks = new Map();
 
-    for (const day of computeMarginHistorySeries(accountFilteredLegs, {
-      accountTypeByCampaign,
-    })) {
+    for (const day of computeAccountMarginHistorySeries(
+      accountFilteredOptionLegs,
+      accountSnapshots,
+      {
+        accountIdByCampaign,
+        accountTypeByCampaign,
+        marginRequirementOverridesByCampaign,
+      }
+    )) {
       for (const [campaignId, margin] of Object.entries(day.byCampaign)) {
-        const value = Number(margin);
+        const value = margin;
         if (!Number.isFinite(value)) continue;
 
         peaks.set(
@@ -233,7 +289,13 @@ export default function DashboardTab({
     }
 
     return peaks;
-  }, [accountFilteredLegs, accountTypeByCampaign]);
+  }, [
+    accountFilteredOptionLegs,
+    accountSnapshots,
+    accountIdByCampaign,
+    accountTypeByCampaign,
+    marginRequirementOverridesByCampaign,
+  ]);
 
   // Legs used for transaction-level metrics. Search applies, campaign
   // startDate does not.
@@ -251,6 +313,15 @@ export default function DashboardTab({
     );
   }, [searchFilteredCampaigns, accountFilteredLegs]);
 
+  const searchFilteredOptionLegs = useMemo(
+    () => searchFilteredLegs.filter((leg) => !isStockLeg(leg)),
+    [searchFilteredLegs]
+  );
+  const searchFilteredStockLegs = useMemo(
+    () => searchFilteredLegs.filter(isStockLeg),
+    [searchFilteredLegs]
+  );
+
   const dashboardDailyCashFlowSeries = useMemo(
     () =>
       computeDailyCashFlowSeries(
@@ -259,26 +330,50 @@ export default function DashboardTab({
       ),
     [searchFilteredLegs, searchFilteredCampaigns]
   );
+  const optionsDailyCashFlowSeries = useMemo(
+    () =>
+      computeDailyCashFlowSeries(
+        searchFilteredOptionLegs,
+        searchFilteredCampaigns
+      ),
+    [searchFilteredOptionLegs, searchFilteredCampaigns]
+  );
+
+  const performanceLegs =
+    performanceMode === "all-in" ? searchFilteredLegs : searchFilteredOptionLegs;
+  const performanceDailyCashFlowSeries =
+    performanceMode === "all-in"
+      ? dashboardDailyCashFlowSeries
+      : optionsDailyCashFlowSeries;
 
   // Realized P/L = closed-leg P/L based on closeDate.
-  const filteredNetPL = useMemo(() => {
-    return searchFilteredLegs.reduce((total, leg) => {
-      if (leg.isOpen) return total;
-
-      const closeDate = getDateOnly(leg.closeDate);
-      if (!closeDate) return total;
-      if (startDateFilter && closeDate < startDateFilter) return total;
-      if (endDateFilter && closeDate > endDateFilter) return total;
-
-      const pl = computeLegPL(leg);
-      return pl == null ? total : total + Number(pl);
-    }, 0);
-  }, [searchFilteredLegs, startDateFilter, endDateFilter]);
+  const filteredOptionPL = useMemo(
+    () =>
+      sumRealizedPL(
+        searchFilteredOptionLegs,
+        startDateFilter,
+        endDateFilter
+      ),
+    [searchFilteredOptionLegs, startDateFilter, endDateFilter]
+  );
+  const filteredStockPL = useMemo(
+    () =>
+      sumRealizedPL(
+        searchFilteredStockLegs,
+        startDateFilter,
+        endDateFilter
+      ),
+    [searchFilteredStockLegs, startDateFilter, endDateFilter]
+  );
+  const filteredNetPL =
+    performanceMode === "all-in"
+      ? filteredOptionPL + filteredStockPL
+      : filteredOptionPL;
 
   // Total net cash flow for the selected date range.
   // Uses the same cash-flow engine as the other cash-flow metrics.
   const filteredNetCashFlow = useMemo(() => {
-    return dashboardDailyCashFlowSeries
+    return performanceDailyCashFlowSeries
       .filter((day) => {
         if (startDateFilter && day.date < startDateFilter) return false;
         if (endDateFilter && day.date > endDateFilter) return false;
@@ -288,7 +383,7 @@ export default function DashboardTab({
         (sum, day) => sum + Number(day.netCashFlow || 0),
         0
       );
-  }, [dashboardDailyCashFlowSeries, startDateFilter, endDateFilter]);
+  }, [performanceDailyCashFlowSeries, startDateFilter, endDateFilter]);
 
   const topMetrics = useMemo(() => {
     const openCampaignIds = new Set(
@@ -298,20 +393,28 @@ export default function DashboardTab({
     const openLegs = accountFilteredLegs.filter(
       (leg) => leg.isOpen && openCampaignIds.has(normalizeId(leg.campaignId))
     );
+    const optionOpenLegs = openLegs.filter((leg) => !isStockLeg(leg));
   
-    const totalMargin = computeMarginEstimate(
+    const totalMargin = computeAccountMarginByCampaign(
       openLegs,
-      undefined,
-      accountTypeByCampaign
+      accountSnapshots,
+      {
+        accountIdByCampaign,
+        accountTypeByCampaign,
+        marginRequirementOverridesByCampaign,
+      }
     ).total;
-    const unrealizedPL = computeCampaignProjectedPL(openLegs);
+    const unrealizedPL = computeCampaignProjectedPL(
+      performanceMode === "all-in" ? openLegs : optionOpenLegs
+    );
   
     let weightedAromTotal = 0;
     let aromMarginTotal = 0;
   
     for (const campaign of open) {
       const campaignId = String(campaign.id);
-      const campaignLegs = legsByCampaign.get(normalizeId(campaign.id)) || [];
+      const campaignLegs = (legsByCampaign.get(normalizeId(campaign.id)) || [])
+        .filter((leg) => !isStockLeg(leg));
       const margin = peakMarginByCampaign.get(campaignId) ?? 0;
       const projectedPL = computeCampaignProjectedPL(campaignLegs, campaign);
       const durationDays = getCampaignDuration(campaignLegs, campaign);
@@ -326,7 +429,7 @@ export default function DashboardTab({
     const yearStart = `${new Date().getFullYear()}-01-01`;
     const today = toISODateStr(new Date());
   
-    const realizedPLYTD = searchFilteredLegs.reduce((total, leg) => {
+    const realizedPLYTD = performanceLegs.reduce((total, leg) => {
       if (leg.isOpen) return total;
   
       const closeDate = getDateOnly(leg.closeDate);
@@ -347,10 +450,14 @@ export default function DashboardTab({
   }, [
     open,
     accountFilteredLegs,
+    accountSnapshots,
+    accountIdByCampaign,
     accountTypeByCampaign,
+    marginRequirementOverridesByCampaign,
     legsByCampaign,
     peakMarginByCampaign,
-    searchFilteredLegs
+    performanceLegs,
+    performanceMode
   ]);
 
   const displaySummary = useMemo(() => {
@@ -367,6 +474,9 @@ export default function DashboardTab({
 
     return {
       netPL: filteredNetPL,
+      optionPL: filteredOptionPL,
+      stockPL: filteredStockPL,
+      allInRealizedPL: filteredOptionPL + filteredStockPL,
       netCashFlow: filteredNetCashFlow,
       openLegCount: filteredLegs.filter((leg) => leg.isOpen).length,
       closedLegCount: filteredLegs.filter((leg) => !leg.isOpen).length,
@@ -377,56 +487,17 @@ export default function DashboardTab({
     accountFilteredLegs,
     filteredCampaigns,
     filteredNetPL,
+    filteredOptionPL,
+    filteredStockPL,
     filteredNetCashFlow,
     open.length,
     closed.length
   ]);
 
   const campaignPnlTotal =
-    displaySummary.netPL + topMetrics.unrealizedPL; 
-
-  // Net Cash Flow / Week.
-  const filteredCashFlowWeekly = useMemo(() => {
-    const filteredDays = dashboardDailyCashFlowSeries.filter((day) => {
-      if (startDateFilter && day.date < startDateFilter) return false;
-      if (endDateFilter && day.date > endDateFilter) return false;
-      return true;
-    });
-
-    if (!filteredDays.length) {
-      return { weekly: 0, total: 0, weeks: 0 };
-    }
-
-    const firstDate = startDateFilter || filteredDays[0].date;
-    const lastDate =
-      endDateFilter ||
-      filteredDays[filteredDays.length - 1].date;
-
-    const start = new Date(`${firstDate}T00:00:00`);
-    const end = new Date(`${lastDate}T00:00:00`);
-
-    const days = Math.max(
-      1,
-      Math.round((end - start) / 86400000) + 1
-    );
-
-    const weeks = days / 7;
-
-    const total = filteredDays.reduce(
-      (sum, day) => sum + Number(day.netCashFlow || 0),
-      0
-    );
-
-    return {
-      weekly: total / weeks,
-      total,
-      weeks
-    };
-  }, [
-    dashboardDailyCashFlowSeries,
-    startDateFilter,
-    endDateFilter
-  ]);
+    displaySummary.netPL + topMetrics.unrealizedPL;
+  const performanceModeLabel =
+    performanceMode === "all-in" ? "All-in" : "Options only";
 
   // This week's net premium.
   const currentWeekPremium = useMemo(() => {
@@ -442,10 +513,7 @@ export default function DashboardTab({
 
     const endDate = toISODateStr(now);
 
-    return computeDailyCashFlowSeries(
-      accountFilteredLegs,
-      accountFilteredCampaigns
-    )
+    return performanceDailyCashFlowSeries
       .filter(
         (day) =>
           day.date >= startDate &&
@@ -455,7 +523,7 @@ export default function DashboardTab({
         (sum, day) => sum + Number(day.netCashFlow || 0),
         0
       );
-  }, [accountFilteredLegs, accountFilteredCampaigns]);
+  }, [performanceDailyCashFlowSeries]);
 
   if (!summary && accountFilteredCampaigns.length === 0) {
     return <div className="card">Loading dashboard…</div>;
@@ -467,7 +535,9 @@ export default function DashboardTab({
       <div style={{ marginBottom: "24px" }}>
         <div className="summary-grid-cards">
           <div className="summary-card">
-            <h3 className="summary-card-title">Campaign P&amp;L</h3>
+            <h3 className="summary-card-title">
+              {performanceModeLabel} Campaign P&amp;L
+            </h3>
             <div className="summary-card-metrics summary-card-metrics--three">
               <div className="summary-metric-item">
                 <div className="summary-metric-label">Realized P&amp;L</div>
@@ -490,6 +560,16 @@ export default function DashboardTab({
                 </div>
               </div>
             </div>
+            <p className="dashboard-stock-pl-summary">
+              Stock realized P&amp;L (separate):{" "}
+              <strong className={cashClass(displaySummary.stockPL)}>
+                {fmtWholeDollars(displaySummary.stockPL)}
+              </strong>
+              {" · "}All-in realized P&amp;L:{" "}
+              <strong className={cashClass(displaySummary.allInRealizedPL)}>
+                {fmtWholeDollars(displaySummary.allInRealizedPL)}
+              </strong>
+            </p>
           </div>
 
           <div className="summary-card">
@@ -503,7 +583,7 @@ export default function DashboardTab({
               </div>
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
-                <div className="summary-metric-label">Weighted AROM</div>
+                <div className="summary-metric-label">Options weighted AROM</div>
                 <div className="summary-metric-val">
                   {topMetrics.weightedArom == null
                     ? "—"
@@ -514,7 +594,9 @@ export default function DashboardTab({
               </div>
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
-                <div className="summary-metric-label">This Week</div>
+                <div className="summary-metric-label">
+                  {performanceModeLabel} this week
+                </div>
                 <div className={`summary-metric-val ${cashClass(currentWeekPremium)}`}>
                   {fmtWholeDollars(currentWeekPremium)}
                 </div>
@@ -537,97 +619,43 @@ export default function DashboardTab({
         <h3 style={{ color: "#9fb3ff", margin: 0 }}>
           Performance Overview
         </h3>
-
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div className="dashboard-performance-mode" role="group" aria-label="Performance display">
+          <span>Display:</span>
           <button
-            onClick={() => setActiveChart("cashflow")}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              fontWeight: "bold",
-              borderRadius: "4px",
-              cursor: "pointer",
-              border: "1px solid",
-              backgroundColor:
-                activeChart === "cashflow"
-                  ? "#1e293b"
-                  : "transparent",
-              borderColor:
-                activeChart === "cashflow"
-                  ? "#38bdf8"
-                  : "#334155",
-              color:
-                activeChart === "cashflow"
-                  ? "#38bdf8"
-                  : "#94a3b8"
-            }}
+            type="button"
+            aria-pressed={performanceMode === "options"}
+            onClick={() => setPerformanceMode("options")}
           >
-            Net Premium (Live)
+            Options only
           </button>
-
           <button
-            onClick={() => setActiveChart("margin")}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              fontWeight: "bold",
-              borderRadius: "4px",
-              cursor: "pointer",
-              border: "1px solid",
-              backgroundColor:
-                activeChart === "margin"
-                  ? "#1e293b"
-                  : "transparent",
-              borderColor:
-                activeChart === "margin"
-                  ? "#38bdf8"
-                  : "#334155",
-              color:
-                activeChart === "margin"
-                  ? "#38bdf8"
-                  : "#94a3b8"
-            }}
+            type="button"
+            aria-pressed={performanceMode === "all-in"}
+            onClick={() => setPerformanceMode("all-in")}
           >
-            Margin
+            All-in
           </button>
         </div>
       </div>
 
-      {activeChart === "cashflow" ? (
-        <div className="cash-flow-charts-grid">
-          <CombinedCashFlowChart
-            legs={searchFilteredLegs}
-            campaigns={searchFilteredCampaigns}
-            dailySeries={dashboardDailyCashFlowSeries}
-            mode="dashboard"
-            startDateFilter={startDateFilter}
-            endDateFilter={endDateFilter}
-          />
-          <WeeklyCashFlowChart
-            legs={searchFilteredLegs}
-            campaigns={searchFilteredCampaigns}
-            dailySeries={dashboardDailyCashFlowSeries}
-            mode="dashboard"
-            startDateFilter={startDateFilter}
-            endDateFilter={endDateFilter}
-          />
-        </div>
-      ) : activeChart === "margin" ? (
-        <Suspense fallback={<div className="card">Loading margin chart...</div>}>
-          <MarginChart
-            legs={searchFilteredLegs}
-            accountTypeByCampaign={accountTypeByCampaign}
-            startDateFilter={startDateFilter}
-            endDateFilter={endDateFilter}
-          />
-        </Suspense>
-      ) : (
-        <PerformanceChart
-          closedCampaigns={closed}
-          legs={searchFilteredLegs}
+      <div className="cash-flow-charts-grid">
+        <CombinedCashFlowChart
+          legs={performanceLegs}
+          campaigns={searchFilteredCampaigns}
+          dailySeries={performanceDailyCashFlowSeries}
           mode="dashboard"
+          startDateFilter={startDateFilter}
+          endDateFilter={endDateFilter}
         />
-      )}
+        <WeeklyCashFlowChart
+          legs={performanceLegs}
+          campaigns={searchFilteredCampaigns}
+          dailySeries={performanceDailyCashFlowSeries}
+          mode="dashboard"
+          startDateFilter={startDateFilter}
+          endDateFilter={endDateFilter}
+        />
+      </div>
 
       {/* Active Campaigns */}
       <section
@@ -761,8 +789,13 @@ export default function DashboardTab({
         <OpenCampaignTable
           campaigns={open}
           legs={accountFilteredLegs}
+          accountSnapshots={accountSnapshots}
+          accountIdByCampaign={accountIdByCampaign}
           peakMarginByCampaign={peakMarginByCampaign}
           accountTypeByCampaign={accountTypeByCampaign}
+          marginRequirementOverridesByCampaign={
+            marginRequirementOverridesByCampaign
+          }
           onSelect={onSelectCampaign}
           accounts={accounts}
           defaultAccountId={defaultAccountId}

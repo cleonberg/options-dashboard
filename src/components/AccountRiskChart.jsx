@@ -41,20 +41,23 @@ export default function AccountRiskChart({
     return {
       ...point,
       baselineAccountValue: baselinePoint?.accountValue,
+      baselineMarginEquity: baselinePoint?.marginEquity,
       baselineHouseRequirement: baselinePoint?.houseRequirement,
       baselineExcessMargin: baselinePoint?.excessMargin,
       accountValueLabel: label(point.accountValue),
+      marginEquityLabel: label(point.marginEquity),
       houseRequirementLabel: label(point.houseRequirement),
       marginLabel: label(point.excessMargin),
     };
   });
 
   return (
-    <div className="account-risk-chart">
-      <h4>
+    <div className="card account-risk-chart">
+      <h3 className="account-risk-chart-title">
         {comparing ? "Current vs. what-if " : ""}
-        account value, house requirement, and excess margin by price scenario
-      </h4>
+        account value, margin equity, house requirement, and excess margin by
+        price scenario
+      </h3>
       {comparing && <p className="account-risk-chart-comparison-note">Dashed lines show current positions.</p>}
       {!complete ? (
         <p>
@@ -83,7 +86,7 @@ export default function AccountRiskChart({
               />
               <ReferenceLine y={0} stroke="#a0aec0" strokeDasharray="4 4" />
               <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 4" />
-              <Legend />
+              <Legend wrapperStyle={{ color: "#9fb3ff" }} />
               <Tooltip
                 cursor={false}
                 wrapperStyle={{ maxWidth: "calc(100vw - 24px)" }}
@@ -95,15 +98,20 @@ export default function AccountRiskChart({
                   name,
                 ]}
                 contentStyle={{
-                  backgroundColor: "rgba(27, 43, 79, 0.8)",
+                  backgroundColor: "#1b2b4f",
                   border: "1px solid #24345f",
                   borderRadius: "6px",
                   color: "#fff",
                   boxSizing: "border-box",
+                  padding: "6px 8px",
+                  fontSize: "11px",
+                  lineHeight: 1.25,
                   maxWidth: "calc(100vw - 24px)",
                   whiteSpace: "normal",
                   overflowWrap: "anywhere",
                 }}
+                itemStyle={{ padding: "1px 0" }}
+                labelStyle={{ marginBottom: "2px" }}
               />
               {comparing && (
                 <>
@@ -112,6 +120,15 @@ export default function AccountRiskChart({
                     dataKey="baselineAccountValue"
                     name="Current account value"
                     stroke="#34d399"
+                    strokeOpacity={0.55}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="baselineMarginEquity"
+                    name="Current margin equity"
+                    stroke="#a78bfa"
                     strokeOpacity={0.55}
                     strokeDasharray="5 5"
                     dot={false}
@@ -149,6 +166,22 @@ export default function AccountRiskChart({
                   dataKey="accountValueLabel"
                   position="top"
                   fill="#a7f3d0"
+                  fontSize={11}
+                />
+              </Line>
+              <Line
+                type="monotone"
+                dataKey="marginEquity"
+                name={comparing ? "What-if margin equity" : "Margin equity"}
+                stroke="#a78bfa"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5 }}
+              >
+                <LabelList
+                  dataKey="marginEquityLabel"
+                  position="bottom"
+                  fill="#ddd6fe"
                   fontSize={11}
                 />
               </Line>

@@ -1,6 +1,8 @@
 import React, { useMemo } from "react";
 import {
   CartesianGrid,
+  Legend,
+  LabelList,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -9,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import {
-  computeMarginHistorySeries,
+  computeAccountMarginHistorySeries,
   fmtWholeDollars,
 } from "../logic/logic.js";
 
@@ -24,31 +26,68 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 }
 
-const tooltipFormatter = (value) => [
-  fmtWholeDollars(value),
-  "Estimated margin",
-];
+const formatCompactDollars = (value) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 0,
+  }).format(value);
 
 export default function MarginChart({
   legs = [],
+  accountSnapshots = [],
+  accountIdByCampaign = new Map(),
   accountTypeByCampaign = new Map(),
+  accounts = [],
+  cashTransactions = [],
   startDateFilter = "",
   endDateFilter = "",
 }) {
   const data = useMemo(
     () =>
-      computeMarginHistorySeries(legs, {
+      computeAccountMarginHistorySeries(legs, accountSnapshots, {
         startDate: startDateFilter,
         endDate: endDateFilter,
+        accountIdByCampaign,
         accountTypeByCampaign,
+        accounts,
+        cashTransactions,
       }),
-    [legs, accountTypeByCampaign, startDateFilter, endDateFilter]
+    [
+      legs,
+      accountSnapshots,
+      accountIdByCampaign,
+      accountTypeByCampaign,
+      accounts,
+      cashTransactions,
+      startDateFilter,
+      endDateFilter,
+    ]
   );
+  const labelInterval = Math.max(1, Math.ceil(data.length / 8));
+  const labeledData = data.map((point, index) => {
+    const shouldLabel =
+      index === 0 ||
+      index === data.length - 1 ||
+      index % labelInterval === 0;
+    const label = (value) =>
+      shouldLabel && Number.isFinite(value)
+        ? formatCompactDollars(value)
+        : "";
+    return {
+      ...point,
+      marginLabel: label(point.total),
+      accountValueLabel: label(point.accountValue),
+      marginEquityLabel: label(point.marginEquity),
+      excessMarginLabel: label(point.excessMargin),
+    };
+  });
 
   if (data.length === 0) {
     return (
       <div className="card">
-        No margin history is available for this date range.
+        No saved account mark snapshots are available for this date range.
       </div>
     );
   }
@@ -56,12 +95,23 @@ export default function MarginChart({
   return (
     <div className="card">
       <h3 style={{ color: "#9fb3ff", marginTop: 0 }}>
-        Estimated Margin Over Time
+        Margin, Account Value, Margin Equity &amp; Excess Margin Over Time
       </h3>
+      {data.some(
+        (point) =>
+          !point.complete ||
+          !point.accountValueComplete ||
+          !point.marginEquityComplete
+      ) && (
+        <p style={{ color: "#94a3b8", fontSize: "12px" }}>
+          Dates with missing marks, prices, or account cash history are omitted
+          from affected lines.
+        </p>
+      )}
 
-      <div style={{ width: "100%", height: 280 }}>
+      <div className="account-margin-history-plot">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
+          <LineChart data={labeledData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#24345f" />
             <XAxis
               dataKey="date"
@@ -74,6 +124,7 @@ export default function MarginChart({
               stroke="#9fb3ff"
               tick={{ fontSize: 12 }}
             />
+            <Legend />
             <Tooltip
               cursor={false}
               content={({ active, payload }) => {
@@ -101,9 +152,19 @@ export default function MarginChart({
                       Date: {formatDate(date)}
                     </div>
 
-                    <div style={{ fontSize: "12px", color: "#f59e0b" }}>
-                      Estimated Margin: {fmtWholeDollars(total)}
-                    </div>
+                    {[
+                      ["Estimated Margin", total, "#f59e0b"],
+                      ["Account Value", payload[0].payload.accountValue, "#34d399"],
+                      ["Margin Equity", payload[0].payload.marginEquity, "#a78bfa"],
+                      ["Excess Margin", payload[0].payload.excessMargin, "#60a5fa"],
+                    ].map(([label, value, color]) => (
+                      <div
+                        key={label}
+                        style={{ fontSize: "12px", color, marginTop: "2px" }}
+                      >
+                        {label}: {value == null ? "Incomplete" : fmtWholeDollars(value)}
+                      </div>
+                    ))}
                   </div>
                 );
               }}
@@ -114,9 +175,64 @@ export default function MarginChart({
               name="Estimated margin"
               stroke="#f59e0b"
               strokeWidth={2}
-              dot
+              dot={false}
               activeDot={{ r: 5 }}
-            />
+            >
+              <LabelList
+                dataKey="marginLabel"
+                position="bottom"
+                fill="#fde68a"
+                fontSize={11}
+              />
+            </Line>
+            <Line
+              type="stepAfter"
+              dataKey="marginEquity"
+              name="Margin equity"
+              stroke="#a78bfa"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 5 }}
+            >
+              <LabelList
+                dataKey="marginEquityLabel"
+                position="top"
+                fill="#ddd6fe"
+                fontSize={11}
+              />
+            </Line>
+            <Line
+              type="stepAfter"
+              dataKey="accountValue"
+              name="Account value"
+              stroke="#34d399"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 5 }}
+            >
+              <LabelList
+                dataKey="accountValueLabel"
+                position="top"
+                fill="#a7f3d0"
+                fontSize={11}
+              />
+            </Line>
+            <Line
+              type="stepAfter"
+              dataKey="excessMargin"
+              name="Excess margin"
+              stroke="#60a5fa"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 5 }}
+            >
+              <LabelList
+                dataKey="excessMarginLabel"
+                position="top"
+                fill="#dbeafe"
+                fontSize={11}
+              />
+            </Line>
           </LineChart>
         </ResponsiveContainer>
       </div>

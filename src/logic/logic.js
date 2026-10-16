@@ -3,13 +3,10 @@ import {
   updateCampaign, 
 } from "../sync/sync.js";
 
-const DEFAULT_MARGIN_RATIO = 0.3;
-const MARGIN_RATIO_BY_TICKER = new Map([
-  ["AAPL", 0.25],
-  ["GOOG", 0.25],
-  ["NVDA", 0.25],
-  ["SOXL", 0.6],
-]);
+const DEFAULT_OPTION_MARGIN_RATIO = 0.25;
+const DEFAULT_LONG_STOCK_MARGIN_RATIO = 0.30;
+const DEFAULT_SHORT_STOCK_MARGIN_RATIO = 0.35;
+const MARGIN_RATIO_BY_TICKER = new Map([["SOXL", 0.6]]);
 
 export const ACCOUNT_TYPE_OPTIONS = [
   { value: "taxable", label: "Taxable brokerage (Reg-T)" },
@@ -591,16 +588,55 @@ export function computeWeeklyCashFlowSeries(dailySeries = []) {
     }));
 }
 
-function getMarginRatio(leg, accountType = "taxable") {
+function getMarginRatio(
+  leg,
+  accountType = "taxable",
+  marginRequirementOverrides = {}
+) {
+  const ticker = String(leg.ticker ?? "").trim().toUpperCase();
+  const type = String(leg.type ?? "").toLowerCase();
+  const isOption = type.endsWith("_call") || type.endsWith("_put");
+  const isShort = type.startsWith("sell_");
+  const overrideKey = isOption
+    ? "option"
+    : isShort
+      ? "stockShort"
+      : "stockLong";
+  const overridePercent = Number(
+    marginRequirementOverrides?.[ticker]?.[overrideKey]
+  );
+  if (
+    Number.isFinite(overridePercent) &&
+    overridePercent > 0 &&
+    overridePercent <= 100
+  ) {
+    return overridePercent / 100;
+  }
+
   if (FULL_COLLATERAL_ACCOUNT_TYPES.has(accountType)) return 1;
 
-  const ticker = String(leg.ticker ?? "").trim().toUpperCase();
-  return MARGIN_RATIO_BY_TICKER.get(ticker) ?? DEFAULT_MARGIN_RATIO;
+  return (
+    MARGIN_RATIO_BY_TICKER.get(ticker) ??
+    (isOption
+      ? DEFAULT_OPTION_MARGIN_RATIO
+      : isShort
+        ? DEFAULT_SHORT_STOCK_MARGIN_RATIO
+        : DEFAULT_LONG_STOCK_MARGIN_RATIO)
+  );
 }
 
-function standaloneMargin(leg, quantity, accountType) {
+function standaloneMargin(
+  leg,
+  quantity,
+  accountType,
+  marginRequirementOverrides = {}
+) {
   const { type, strike, openPrice } = leg;
-  const marginRatio = getMarginRatio(leg, accountType);
+  const marginRatio = getMarginRatio(
+    leg,
+    accountType,
+    marginRequirementOverrides
+  );
 
   if (!Number.isFinite(quantity) || quantity <= 0) return null;
 
@@ -716,7 +752,8 @@ function buildMarginRuntime(legs) {
 
 function evaluateMarginFromActiveLegs(
   activeLegs,
-  accountTypeByCampaign = new Map()
+  accountTypeByCampaign = new Map(),
+  marginRequirementOverridesByCampaign = new Map()
 ) {
   const byCampaign = {};
   const consumedQuantityByLegKey = new Map();
@@ -786,7 +823,14 @@ function evaluateMarginFromActiveLegs(
 
     const accountType =
       accountTypeByCampaign.get(leg.campaignId) || "taxable";
-    const amount = standaloneMargin(leg.source, remaining, accountType);
+    const marginRequirementOverrides =
+      marginRequirementOverridesByCampaign.get(leg.campaignId) || {};
+    const amount = standaloneMargin(
+      leg.source,
+      remaining,
+      accountType,
+      marginRequirementOverrides
+    );
 
     if (amount == null) {
       unsupportedLegs.push(leg.source);
@@ -816,7 +860,8 @@ function isLegActiveOnDay(leg, day) {
 export function computeMarginEstimate(
   legs = [],
   asOfDate = new Date(),
-  accountTypeByCampaign = new Map()
+  accountTypeByCampaign = new Map(),
+  marginRequirementOverridesByCampaign = new Map()
 ) {
   const day = getCalendarDay(asOfDate);
   if (!day) {
@@ -830,7 +875,11 @@ export function computeMarginEstimate(
 
   const runtime = buildMarginRuntime(legs);
   const activeLegs = runtime.normalized.filter((leg) => isLegActiveOnDay(leg, day));
-  return evaluateMarginFromActiveLegs(activeLegs, accountTypeByCampaign);
+  return evaluateMarginFromActiveLegs(
+    activeLegs,
+    accountTypeByCampaign,
+    marginRequirementOverridesByCampaign
+  );
 }
 
 export function computeMarginHistorySeries(
@@ -839,6 +888,7 @@ export function computeMarginHistorySeries(
     startDate = "",
     endDate = "",
     accountTypeByCampaign = new Map(),
+    marginRequirementOverridesByCampaign = new Map(),
   } = {}
 ) {
   const runtime = buildMarginRuntime(legs);
@@ -899,7 +949,8 @@ export function computeMarginHistorySeries(
 
     const snapshot = evaluateMarginFromActiveLegs(
       Array.from(activeMap.values()),
-      accountTypeByCampaign
+      accountTypeByCampaign,
+      marginRequirementOverridesByCampaign
     );
 
     output.push({
@@ -935,6 +986,7 @@ export function computeAccountMarginEstimate(
     shockPercent = 0,
     minimumMarginRatio = 0.10,
     accountType = "taxable",
+    marginRequirementOverrides = {},
   } = {}
 ) {
   const day = getCalendarDay(asOfDate);
@@ -1051,7 +1103,11 @@ export function computeAccountMarginEstimate(
       continue;
     }
 
-    const ratio = getMarginRatio(source, accountType);
+    const ratio = getMarginRatio(
+      source,
+      accountType,
+      marginRequirementOverrides
+    );
     const multiplier = 1 + shock / 100;
     let standalone = null;
 
@@ -1134,6 +1190,444 @@ export function computeAccountMarginEstimate(
     complete,
     positions: positions.map(({ leg, ...position }) => position),
   };
+}
+
+function getLatestAccountSnapshotsByAccount(
+  accountSnapshots,
+  asOfDate,
+  relevantAccountIds
+) {
+  const day = getCalendarDay(asOfDate);
+  const relevantIds = new Set(
+    Array.from(relevantAccountIds || [])
+      .filter((accountId) => accountId != null && accountId !== "")
+      .map(String)
+  );
+  const latestSnapshotByAccount = new Map();
+  for (const snapshot of accountSnapshots) {
+    const accountId = snapshot.accountId == null
+      ? ""
+      : String(snapshot.accountId);
+    const snapshotDate = getCalendarDay(snapshot.date);
+    if (!accountId || !snapshotDate || !day || snapshotDate > day) continue;
+    if (relevantIds.size && !relevantIds.has(accountId)) continue;
+
+    const previous = latestSnapshotByAccount.get(accountId);
+    if (!previous || snapshotDate >= previous.date) {
+      latestSnapshotByAccount.set(accountId, {
+        date: snapshotDate,
+        positionMarks: snapshot.positionMarks || {},
+        underlyingPrices: snapshot.underlyingPrices || {},
+      });
+    }
+  }
+  return latestSnapshotByAccount;
+}
+
+export function computeAccountMarginByCampaign(
+  legs = [],
+  accountSnapshots = [],
+  {
+    asOfDate = new Date(),
+    accountIdByCampaign = new Map(),
+    accountTypeByCampaign = new Map(),
+    marginRequirementOverridesByCampaign = new Map(),
+  } = {}
+) {
+  const day = getCalendarDay(asOfDate);
+  if (!day) return { total: null, complete: false, byCampaign: {} };
+
+  const latestSnapshotByAccount = getLatestAccountSnapshotsByAccount(
+    accountSnapshots,
+    day,
+    accountIdByCampaign.values()
+  );
+
+  const legsByCampaign = new Map();
+  for (const leg of legs) {
+    const campaignId = String(leg.campaignId ?? "unassigned");
+    const campaignLegs = legsByCampaign.get(campaignId) || [];
+    campaignLegs.push(leg);
+    legsByCampaign.set(campaignId, campaignLegs);
+  }
+
+  const byCampaign = {};
+  let complete = true;
+
+  for (const [campaignId, campaignLegs] of legsByCampaign) {
+    const accountId = accountIdByCampaign.get(campaignId);
+    const snapshot = latestSnapshotByAccount.get(
+      accountId == null ? "" : String(accountId)
+    );
+    const estimate = computeAccountMarginEstimate(campaignLegs, {
+      asOfDate: day,
+      positionMarks: snapshot?.positionMarks,
+      underlyingPrices: snapshot?.underlyingPrices,
+      accountType: accountTypeByCampaign.get(campaignId) || "taxable",
+      marginRequirementOverrides:
+        marginRequirementOverridesByCampaign.get(campaignId) || {},
+    });
+
+    byCampaign[campaignId] = estimate.total;
+    if (!estimate.complete) complete = false;
+  }
+
+  return {
+    total: complete
+      ? Object.values(byCampaign).reduce((sum, margin) => sum + margin, 0)
+      : null,
+    complete,
+    byCampaign,
+  };
+}
+
+function getAccountPositionInfo(leg) {
+  const type = String(leg.type || "").toLowerCase();
+  const isOption = type.endsWith("_call") || type.endsWith("_put");
+  const isStock = type.endsWith("_stock");
+  const isBuy = type.startsWith("buy_");
+  const isSell = type.startsWith("sell_");
+  return {
+    type,
+    isOption,
+    isStock,
+    isBuy,
+    isSell,
+    supported: (isBuy || isSell) && (isOption || isStock),
+    multiplier: isOption ? 100 : 1,
+  };
+}
+
+function getAccountPositionMark(leg, positionMarks, underlyingPrices) {
+  const positionMark = readNonnegativePrice(positionMarks[String(leg.id)]);
+  if (positionMark != null) return positionMark;
+
+  const info = getAccountPositionInfo(leg);
+  if (!info.isOption) return null;
+
+  const ticker = String(leg.ticker || "").trim().toUpperCase();
+  const spot = readNonnegativePrice(underlyingPrices[ticker]);
+  const strike = Number(leg.strike);
+  if (spot == null || !Number.isFinite(strike) || strike <= 0) return null;
+  return optionIntrinsic(info.type.endsWith("_put") ? "put" : "call", spot, strike);
+}
+
+function isAccountPositionActiveOnDate(leg, date) {
+  if (leg.openDate && leg.openDate > date) return false;
+  if (leg.closeDate && leg.closeDate <= date) return false;
+  if (leg.isOpen === false && !leg.closeDate) return false;
+  const expiry = leg.expiry || leg.expiration;
+  return !(expiry && expiry < date);
+}
+
+export function computeAccountRiskSnapshotMetrics(
+  account,
+  legs = [],
+  cashTransactions = [],
+  {
+    asOfDate = new Date(),
+    positionMarks = {},
+    underlyingPrices = {},
+  } = {}
+) {
+  const date = getCalendarDay(asOfDate);
+  if (!date) {
+    return {
+      complete: false,
+      accountValue: null,
+      marginEquity: null,
+      marginEquityComplete: false,
+      houseRequirement: null,
+      excessMargin: null,
+    };
+  }
+
+  const openingDate = account.openingCashDate || "";
+  const openingCash =
+    account.openingCash == null || account.openingCash === ""
+      ? null
+      : Number(account.openingCash);
+  const cashKnown = Boolean(
+    openingDate && openingDate <= date && Number.isFinite(openingCash)
+  );
+  let cashBalance = cashKnown ? openingCash : null;
+  let cashFlowsComplete = true;
+
+  if (cashKnown) {
+    for (const transaction of cashTransactions) {
+      if (
+        !transaction.deleted &&
+        transaction.accountId === account.id &&
+        transaction.date >= openingDate &&
+        transaction.date <= date
+      ) {
+        cashBalance += Number(transaction.amount || 0);
+      }
+    }
+
+    for (const leg of legs) {
+      const info = getAccountPositionInfo(leg);
+      if (!info.supported) {
+        if (
+          leg.type?.startsWith("assignment_") &&
+          ((leg.openDate >= openingDate && leg.openDate <= date) ||
+            (leg.closeDate >= openingDate && leg.closeDate <= date))
+        ) {
+          cashFlowsComplete = false;
+        }
+        continue;
+      }
+
+      const quantity = Math.abs(Number(leg.qty));
+      if (!Number.isFinite(quantity)) continue;
+
+      const openPrice =
+        leg.openPrice == null || leg.openPrice === ""
+          ? null
+          : Number(leg.openPrice);
+      if (
+        openPrice != null &&
+        Number.isFinite(openPrice) &&
+        leg.openDate >= openingDate &&
+        leg.openDate <= date
+      ) {
+        cashBalance += (info.isSell ? 1 : -1) * openPrice * quantity * info.multiplier;
+      }
+
+      const closePrice =
+        leg.closePrice == null || leg.closePrice === ""
+          ? null
+          : Number(leg.closePrice);
+      if (
+        closePrice != null &&
+        Number.isFinite(closePrice) &&
+        !leg.isOpen &&
+        leg.closeDate >= openingDate &&
+        leg.closeDate <= date
+      ) {
+        cashBalance += (info.isSell ? -1 : 1) * closePrice * quantity * info.multiplier;
+      }
+    }
+  }
+
+  const activeLegs = legs.filter((leg) => isAccountPositionActiveOnDate(leg, date));
+  let complete = Number.isFinite(cashBalance) && cashFlowsComplete;
+  let marginEquityComplete = Number.isFinite(cashBalance) && cashFlowsComplete;
+  let netPositionValue = 0;
+  let marginEquityPositionValue = 0;
+
+  for (const leg of activeLegs) {
+    const info = getAccountPositionInfo(leg);
+    const quantity = Math.abs(Number(leg.qty));
+    const mark = getAccountPositionMark(leg, positionMarks, underlyingPrices);
+    if (!info.supported || !Number.isFinite(quantity) || mark == null) {
+      complete = false;
+      if (
+        !info.supported ||
+        !Number.isFinite(quantity) ||
+        info.isBuy ||
+        !info.isOption
+      ) {
+        marginEquityComplete = false;
+      }
+      continue;
+    }
+
+    let scenarioMark = mark;
+    if (info.isOption) {
+      const ticker = String(leg.ticker || "").trim().toUpperCase();
+      const spot = readNonnegativePrice(underlyingPrices[ticker]);
+      const strike = Number(leg.strike);
+      if (spot == null || !Number.isFinite(strike) || strike <= 0) {
+        complete = false;
+        if (info.isBuy || !info.isOption) marginEquityComplete = false;
+        continue;
+      }
+
+      const right = info.type.endsWith("_put") ? "put" : "call";
+      const intrinsic = optionIntrinsic(right, spot, strike);
+      scenarioMark = intrinsic + Math.max(0, mark - intrinsic);
+    }
+
+    const positionValue = scenarioMark * quantity * info.multiplier;
+    netPositionValue += info.isBuy ? positionValue : -positionValue;
+    if (info.isBuy || !info.isOption) {
+      marginEquityPositionValue += info.isBuy ? positionValue : -positionValue;
+    }
+  }
+
+  const marginEstimate = computeAccountMarginEstimate(legs, {
+    asOfDate: date,
+    positionMarks,
+    underlyingPrices,
+    accountType: account.accountType || "taxable",
+    marginRequirementOverrides:
+      account.marginRequirementOverrides || {},
+  });
+  if (!marginEstimate.complete || marginEstimate.total == null) {
+    complete = false;
+  }
+
+  const accountValue =
+    complete ? cashBalance + netPositionValue : null;
+  const marginEquity = marginEquityComplete
+    ? cashBalance + marginEquityPositionValue
+    : null;
+  const excessMargin =
+    marginEquity != null &&
+    marginEstimate.complete &&
+    marginEstimate.total != null
+      ? marginEquity - marginEstimate.total
+      : null;
+  return {
+    complete,
+    accountValue,
+    marginEquity,
+    marginEquityComplete: marginEquity != null,
+    houseRequirement: marginEstimate.total,
+    excessMargin,
+  };
+}
+
+export function computeAccountMarginHistorySeries(
+  legs = [],
+  accountSnapshots = [],
+  {
+    startDate = "",
+    endDate = "",
+    accountIdByCampaign = new Map(),
+    accountTypeByCampaign = new Map(),
+    marginRequirementOverridesByCampaign = new Map(),
+    accounts = [],
+    cashTransactions = [],
+  } = {}
+) {
+  const today = getCalendarDay(new Date());
+  const lastDate = getCalendarDay(endDate) || today;
+  if (!lastDate) return [];
+
+  const accountIds = accounts.length
+    ? accounts.map((account) => account.id)
+    : Array.from(accountIdByCampaign.values());
+  const snapshotDates = new Set();
+  const relevantAccountIds = new Set(
+    accountIds
+      .filter((accountId) => accountId != null && accountId !== "")
+      .map(String)
+  );
+  for (const snapshot of accountSnapshots) {
+    const date = getCalendarDay(snapshot.date);
+    const accountId =
+      snapshot.accountId == null ? "" : String(snapshot.accountId);
+    if (
+      date &&
+      date <= lastDate &&
+      (!relevantAccountIds.size || relevantAccountIds.has(accountId))
+    ) {
+      snapshotDates.add(date);
+    }
+  }
+
+  const firstDate =
+    getCalendarDay(startDate) ||
+    Array.from(snapshotDates).sort()[0] ||
+    lastDate;
+  if (firstDate > lastDate) return [];
+
+  const legsByAccount = new Map(
+    accounts.map((account) => [String(account.id), []])
+  );
+  for (const leg of legs) {
+    const campaignId = String(leg.campaignId ?? "unassigned");
+    const accountId = accountIdByCampaign.get(campaignId);
+    const accountLegs = legsByAccount.get(
+      accountId == null ? "" : String(accountId)
+    );
+    if (accountLegs) accountLegs.push(leg);
+  }
+
+  const overridesByAccount = new Map(
+    accounts.map((account) => [
+      String(account.id),
+      account.marginRequirementOverrides || {},
+    ])
+  );
+  const effectiveMarginOverridesByCampaign = new Map(
+    marginRequirementOverridesByCampaign
+  );
+  for (const [campaignId, accountId] of accountIdByCampaign) {
+    if (!effectiveMarginOverridesByCampaign.has(campaignId)) {
+      effectiveMarginOverridesByCampaign.set(
+        campaignId,
+        overridesByAccount.get(String(accountId)) || {}
+      );
+    }
+  }
+
+  return Array.from(snapshotDates)
+    .filter((date) => date >= firstDate && date <= lastDate)
+    .sort()
+    .map((date) => {
+      const estimate = computeAccountMarginByCampaign(
+        legs,
+        accountSnapshots,
+        {
+          asOfDate: date,
+          accountIdByCampaign,
+          accountTypeByCampaign,
+          marginRequirementOverridesByCampaign:
+            effectiveMarginOverridesByCampaign,
+        }
+      );
+      const latestSnapshots = getLatestAccountSnapshotsByAccount(
+        accountSnapshots,
+        date,
+        accountIds
+      );
+      const accountMetrics = accounts.map((account) => {
+        const snapshot = latestSnapshots.get(String(account.id));
+        return computeAccountRiskSnapshotMetrics(
+          account,
+          legsByAccount.get(String(account.id)) || [],
+          cashTransactions,
+          {
+            asOfDate: date,
+            positionMarks: snapshot?.positionMarks,
+            underlyingPrices: snapshot?.underlyingPrices,
+          }
+        );
+      });
+      const accountValueComplete =
+        accountMetrics.length > 0 &&
+        accountMetrics.every((metrics) => metrics.complete);
+      const accountValue = accountValueComplete
+        ? accountMetrics.reduce((sum, metrics) => sum + metrics.accountValue, 0)
+        : null;
+      const marginEquityComplete =
+        accountMetrics.length > 0 &&
+        accountMetrics.every((metrics) => metrics.marginEquityComplete);
+      const marginEquity = marginEquityComplete
+        ? accountMetrics.reduce((sum, metrics) => sum + metrics.marginEquity, 0)
+        : null;
+      const excessMarginComplete =
+        accountMetrics.length > 0 &&
+        accountMetrics.every((metrics) => metrics.excessMargin != null);
+      const excessMargin = excessMarginComplete
+        ? accountMetrics.reduce((sum, metrics) => sum + metrics.excessMargin, 0)
+        : null;
+      return {
+        date,
+        timestamp: new Date(`${date}T00:00:00`).getTime(),
+        total: estimate.total,
+        accountValue,
+        marginEquity,
+        excessMargin,
+        byCampaign: estimate.byCampaign,
+        complete: estimate.complete,
+        accountValueComplete,
+        marginEquityComplete,
+      };
+    });
 }
 
 export function computeAROM(pl, margin, daysHeld) {

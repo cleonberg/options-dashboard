@@ -3,7 +3,7 @@ import {
   fmtWholeDollars,
   cashClass,
   computeCampaignProjectedPL,
-  computeMarginEstimate,
+  computeAccountMarginByCampaign,
   fmtCampaignDaysLeft,
   getCalendarDay,
   computeAROM,
@@ -28,8 +28,11 @@ function formatShortDate(value) {
 export default function OpenCampaignTable({
   campaigns,
   legs,
+  accountSnapshots = [],
+  accountIdByCampaign = new Map(),
   peakMarginByCampaign,
   accountTypeByCampaign = new Map(),
+  marginRequirementOverridesByCampaign = new Map(),
   onSelect,
   accounts = [],
   defaultAccountId = "",
@@ -134,12 +137,22 @@ export default function OpenCampaignTable({
 
   const marginByCampaign = useMemo(
     () =>
-      computeMarginEstimate(
+      computeAccountMarginByCampaign(
         openLegs,
-        undefined,
-        accountTypeByCampaign
+        accountSnapshots,
+        {
+          accountIdByCampaign,
+          accountTypeByCampaign,
+          marginRequirementOverridesByCampaign,
+        }
       ).byCampaign,
-    [openLegs, accountTypeByCampaign]
+    [
+      openLegs,
+      accountSnapshots,
+      accountIdByCampaign,
+      accountTypeByCampaign,
+      marginRequirementOverridesByCampaign,
+    ]
   );
 
   const sortedCampaigns = useMemo(() => {
@@ -258,8 +271,11 @@ export default function OpenCampaignTable({
           <tbody>
             {sortedCampaigns.map((campaign) => {
               const metrics = campaignMetricsMap.get(String(campaign.id));
+              const campaignMargin =
+                marginByCampaign[String(campaign.id)];
               const estimatedMargin =
-                marginByCampaign[String(campaign.id)] ?? 0;
+                campaignMargin === undefined ? 0 : campaignMargin;
+              const hasCompleteMargin = estimatedMargin != null;
               const daysLeft = metrics?.daysLeft ?? null;
               const projectedPL = metrics?.projectedPL ?? 0;
               const legCount = metrics?.legCount ?? 0;
@@ -291,7 +307,9 @@ export default function OpenCampaignTable({
                     </span>
                   </td>
                   <td className="numeric-column">
-                    {fmtWholeDollars(estimatedMargin)}
+                    {hasCompleteMargin
+                      ? fmtWholeDollars(estimatedMargin)
+                      : "Incomplete"}
                   </td>
                   <td
                     className={`numeric-column ${cashClass(projectedPL)}`}

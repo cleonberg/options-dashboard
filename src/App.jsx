@@ -186,6 +186,7 @@ export default function App() {
             summary={dashboardSummary}
             campaigns={campaigns}
             legs={legs}
+            accountSnapshots={accountSnapshots}
             accounts={accounts}
             defaultAccountId={defaultAccountId}
             onSelectCampaign={handleSelectCampaign}

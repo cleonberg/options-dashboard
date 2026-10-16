@@ -185,8 +185,39 @@ h2, h3 {
   align-items: start;
 }
 
+.account-risk-chart-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.account-risk-chart-pair > * {
+  min-width: 0;
+}
+
+.account-risk-chart-pair > .card {
+  display: flex;
+  flex-direction: column;
+  height: 620px;
+  box-sizing: border-box;
+}
+
+.account-risk-chart-pair .account-risk-chart-plot,
+.account-risk-chart-pair .account-margin-history-plot {
+  flex: 1;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.account-risk-chart-pair .account-risk-chart {
+  margin-top: 0;
+}
+
 @media (max-width: 900px) {
-  .cash-flow-charts-grid {
+  .cash-flow-charts-grid,
+  .account-risk-chart-pair {
     grid-template-columns: 1fr;
   }
 }
@@ -728,6 +759,37 @@ button.secondary:hover {
 .summary-card-divider {
   border-left: 1px solid var(--border-color, #24345f);
   height: 24px;
+}
+
+.dashboard-stock-pl-summary {
+  margin: 12px 0 0;
+  color: var(--text-muted, #9fb3ff);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-performance-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted, #9fb3ff);
+  font-size: 12px;
+}
+
+.dashboard-performance-mode button {
+  padding: 5px 10px;
+  border: 1px solid var(--border-color-bright, #40558a);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-main, #f5f7ff);
+  cursor: pointer;
+}
+
+.dashboard-performance-mode button[aria-pressed="true"] {
+  border-color: #3182ce;
+  background: #3182ce;
+  color: #fff;
 }
 
 @media (max-width: 600px) {
@@ -1309,14 +1371,10 @@ button.secondary:hover {
 
 .account-toolbar {
   display: flex;
-  align-items: end;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 16px;
   margin-bottom: 12px;
-}
-
-.account-picker {
-  max-width: 320px;
 }
 
 .account-toolbar-actions {
@@ -1325,26 +1383,49 @@ button.secondary:hover {
   gap: 8px;
 }
 
-.account-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.account-summary-grid > .summary-card {
-  align-items: center;
-  min-width: 0;
-  padding: 12px;
-  text-align: center;
-}
-
-.account-summary-value {
-  margin-top: 6px;
+.account-summary-chart-title {
+  margin: 0 0 8px;
+  color: #9fb3ff;
   font-size: 18px;
   font-weight: 700;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
+}
+
+.account-summary-chart-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.account-summary-chart-pair > * {
+  min-width: 0;
+}
+
+.account-summary-chart-note {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.account-summary-chart-plot {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .account-summary-chart-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.account-summary-chart-tooltip {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #24345f;
+  border-radius: 6px;
+  background: #1b2b4f;
+  color: #fff;
+  font-size: 12px;
 }
 
 .account-overview-list {
@@ -1360,6 +1441,9 @@ button.secondary:hover {
 
 .account-overview h3 {
   margin: 0 0 10px;
+  color: #9fb3ff;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .account-overview-metrics {
@@ -1381,22 +1465,14 @@ button.secondary:hover {
   overflow-wrap: anywhere;
 }
 
-.account-stress-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  margin-top: 12px;
-  font-size: 13px;
-}
-
 .account-risk-chart {
   margin-top: 16px;
 }
 
-.account-risk-chart h4 {
+.account-risk-chart-title {
   margin: 0 0 8px;
-  color: var(--text-muted);
-  font-size: 13px;
+  color: #9fb3ff;
+  font-size: 18px;
   font-weight: 600;
 }
 
@@ -1404,8 +1480,16 @@ button.secondary:hover {
   margin-top: 14px;
 }
 
+.account-what-if-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .account-what-if-toggle {
-  margin: 0 0 10px;
+  margin: 0;
 }
 
 .account-what-if-panel {
@@ -1447,6 +1531,7 @@ button.secondary:hover {
 .account-risk-chart-plot {
   width: 100%;
   height: 520px;
+  touch-action: pan-y;
 }
 
 .account-mark-section-title {
@@ -1457,6 +1542,8 @@ button.secondary:hover {
 }
 
 .account-position-list {
+  width: 100%;
+  box-sizing: border-box;
   margin-top: 10px;
 }
 
@@ -1500,16 +1587,8 @@ button.secondary:hover {
     flex-direction: column;
   }
 
-  .account-picker {
-    max-width: none;
-  }
-
   .account-overview-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .account-summary-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .summary-card-metrics--formula {
