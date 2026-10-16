@@ -338,6 +338,7 @@ function calculateWhatIfRiskScenarios({
   legs,
   closedLegIds,
   hypotheticalPosition,
+  rollScenario,
   marks,
   underlyingPrices,
   date,
@@ -346,11 +347,25 @@ function calculateWhatIfRiskScenarios({
 }) {
   let whatIfCashBalance = cashBalance;
   const closedIds = new Set(closedLegIds);
+  const simulatedMarks = { ...marks };
+  const simulatedUnderlyingPrices = { ...underlyingPrices };
+
+  if (rollScenario) {
+    closedIds.add(rollScenario.originalLegId);
+    simulatedMarks[rollScenario.originalLegId] = rollScenario.originalMark;
+    simulatedMarks[rollScenario.position.id] = rollScenario.position.mark;
+    simulatedUnderlyingPrices[rollScenario.position.ticker] =
+      rollScenario.position.underlyingPrice;
+  }
 
   for (const leg of legs) {
     if (!closedIds.has(String(leg.id))) continue;
     const info = typeInfo(leg);
-    const mark = currentPositionMark(leg, marks, underlyingPrices);
+    const mark = currentPositionMark(
+      leg,
+      simulatedMarks,
+      simulatedUnderlyingPrices
+    );
     const quantity = Math.abs(Number(leg.qty));
     if (!info.supported || mark == null || !Number.isFinite(quantity)) continue;
 
@@ -363,8 +378,6 @@ function calculateWhatIfRiskScenarios({
   const simulatedLegs = legs.filter(
     (leg) => !closedIds.has(String(leg.id))
   );
-  const simulatedMarks = { ...marks };
-  const simulatedUnderlyingPrices = { ...underlyingPrices };
 
   if (hypotheticalPosition) {
     const id = `what-if-${accountId}-${hypotheticalPosition.id}`;
@@ -394,6 +407,29 @@ function calculateWhatIfRiskScenarios({
         hypotheticalPosition.mark *
         hypotheticalPosition.qty *
         info.multiplier;
+    }
+  }
+
+  if (rollScenario) {
+    const { position } = rollScenario;
+    const rolledLeg = {
+      id: position.id,
+      campaignId: position.id,
+      type: position.type,
+      ticker: position.ticker,
+      qty: position.qty,
+      strike: position.strike,
+      expiry: position.expiry,
+      openDate: date,
+      openPrice: position.mark,
+      isOpen: true,
+    };
+    const info = typeInfo(rolledLeg);
+
+    simulatedLegs.push(rolledLeg);
+    if (whatIfCashBalance != null) {
+      whatIfCashBalance +=
+        (info.isBuy ? -1 : 1) * position.mark * position.qty * info.multiplier;
     }
   }
 
@@ -581,6 +617,17 @@ function calculateAccountMetrics({
 
 function displayMoney(value) {
   return value == null ? "Incomplete" : fmtWholeDollars(value);
+}
+
+function displayPreciseMoney(value) {
+  return value == null || !Number.isFinite(value)
+    ? "Incomplete"
+    : new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
 }
 
 function positionDescription(leg) {
@@ -999,6 +1046,15 @@ function AccountRiskWhatIf({
   const [showControls, setShowControls] = useState(false);
   const [closedLegIds, setClosedLegIds] = useState([]);
   const [hypotheticalPosition, setHypotheticalPosition] = useState(null);
+  const [rollLegId, setRollLegId] = useState(null);
+  const [rollFormValues, setRollFormValues] = useState({
+    strike: "",
+    expiry: "",
+    qty: "",
+  });
+  const [rollQuote, setRollQuote] = useState(null);
+  const [rollLoading, setRollLoading] = useState(false);
+  const [rollError, setRollError] = useState("");
   const [positionType, setPositionType] = useState("buy_call");
   const [formValues, setFormValues] = useState({
     ticker: "",
@@ -1010,7 +1066,39 @@ function AccountRiskWhatIf({
   });
   const [formError, setFormError] = useState("");
   const isOption = positionType.endsWith("_call") || positionType.endsWith("_put");
-  const hasChanges = closedLegIds.length > 0 || hypotheticalPosition != null;
+  const rollLeg = metrics.activeLegs.find(
+    (leg) => String(leg.id) === rollLegId
+  );
+  const rollQuantity = Number(rollFormValues.qty);
+  const rollScenario =
+    date === today() &&
+    rollQuote &&
+    rollQuote.quoteDate === date &&
+    rollLeg &&
+    rollQuote.legId === rollLegId &&
+    rollQuote.strike === Number(rollFormValues.strike) &&
+    rollQuote.expiry === rollFormValues.expiry &&
+    Number.isInteger(rollQuantity) &&
+    rollQuantity > 0
+      ? {
+          originalLegId: rollLegId,
+          originalMark: rollQuote.originalMark,
+          position: {
+            id: `what-if-roll-${account.id}-${rollLegId}`,
+            type: rollLeg.type,
+            ticker: rollLeg.ticker,
+            qty: rollQuantity,
+            mark: rollQuote.newMark,
+            strike: rollQuote.strike,
+            expiry: rollQuote.expiry,
+            underlyingPrice: rollQuote.underlyingPrice,
+          },
+        }
+      : null;
+  const hasChanges =
+    closedLegIds.length > 0 ||
+    hypotheticalPosition != null ||
+    rollScenario != null;
   const whatIfData = hasChanges
     ? calculateWhatIfRiskScenarios({
         accountId: account.id,
@@ -1019,6 +1107,7 @@ function AccountRiskWhatIf({
         legs,
         closedLegIds,
         hypotheticalPosition,
+        rollScenario,
         marks,
         underlyingPrices,
         date,
@@ -1030,6 +1119,134 @@ function AccountRiskWhatIf({
   const complete = whatIfData.every((point) =>
     Number.isFinite(point.excessMargin)
   );
+  const rollNetCredit = rollScenario
+    ? (rollScenario.position.mark * rollScenario.position.qty -
+        rollScenario.originalMark * Math.abs(Number(rollLeg.qty))) *
+      100
+    : null;
+  const newCurrentMargin = rollScenario
+    ? whatIfData.find((point) => point.shockPercent === 0)?.houseRequirement
+    : null;
+  const minimumRollContracts =
+    rollScenario && rollScenario.position.mark > 0
+      ? Math.floor(
+          (Math.round(rollScenario.originalMark * 100) *
+            Math.abs(Number(rollLeg.qty))) /
+            Math.round(rollScenario.position.mark * 100)
+        ) + 1
+      : null;
+
+  function toggleRollEditor(leg) {
+    const legId = String(leg.id);
+    if (rollLegId === legId) {
+      setRollLegId(null);
+      setRollQuote(null);
+      setRollError("");
+      return;
+    }
+
+    const quantity = Math.abs(Number(leg.qty));
+    setRollLegId(legId);
+    setRollFormValues({
+      strike: "",
+      expiry: "",
+      qty:
+        Number.isInteger(quantity) && quantity > 0
+          ? String(quantity)
+          : "1",
+    });
+    setRollQuote(null);
+    setRollError("");
+  }
+
+  async function handleEvaluateRoll(event, leg) {
+    event.preventDefault();
+    if (date !== today()) {
+      setRollError("Current option quotes are only available for today's account date.");
+      return;
+    }
+
+    const ticker = String(leg.ticker || "").trim().toUpperCase();
+    const originalLegId = String(leg.id);
+    const originalStrike = numberOrNull(leg.strike);
+    const originalExpiry = String(leg.expiry || leg.expiration || "").slice(0, 10);
+    const newStrike = Number(rollFormValues.strike);
+    const newExpiry = rollFormValues.expiry;
+    const quantity = Number(rollFormValues.qty);
+    const right = typeInfo(leg).type.endsWith("_call") ? "call" : "put";
+
+    if (
+      !ticker ||
+      originalStrike == null ||
+      originalStrike <= 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(originalExpiry) ||
+      !Number.isFinite(newStrike) ||
+      newStrike <= 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(newExpiry) ||
+      newExpiry < date ||
+      !Number.isInteger(quantity) ||
+      quantity <= 0
+    ) {
+      setRollError("Enter a valid new strike, expiration, and whole number of contracts.");
+      return;
+    }
+
+    const targetQuoteId =
+      originalLegId === "roll-target" ? "roll-target-new" : "roll-target";
+    setRollLoading(true);
+    setRollError("");
+    setRollQuote(null);
+
+    try {
+      const result = await refreshAccountMarks([
+        {
+          id: originalLegId,
+          ticker,
+          kind: "option",
+          right,
+          strike: originalStrike,
+          expiry: originalExpiry,
+        },
+        {
+          id: targetQuoteId,
+          ticker,
+          kind: "option",
+          right,
+          strike: newStrike,
+          expiry: newExpiry,
+        },
+      ]);
+      const originalMark = numberOrNull(
+        result.positionMarks?.[originalLegId]
+      );
+      const newMark = numberOrNull(result.positionMarks?.[targetQuoteId]);
+      const underlyingPrice = numberOrNull(result.underlyingPrices?.[ticker]);
+
+      if (originalMark == null || newMark == null) {
+        throw new Error("A current quote for the existing or replacement option is unavailable.");
+      }
+      if (underlyingPrice == null) {
+        throw new Error(`A current underlying quote for ${ticker} is unavailable.`);
+      }
+
+      setRollQuote({
+        legId: originalLegId,
+        quoteDate: date,
+        strike: newStrike,
+        expiry: newExpiry,
+        originalMark,
+        newMark,
+        underlyingPrice,
+      });
+    } catch (error) {
+      console.error("Could not evaluate option roll.", error);
+      setRollError(
+        `Could not evaluate roll: ${error.message || "Unable to retrieve current quotes."}`
+      );
+    } finally {
+      setRollLoading(false);
+    }
+  }
 
   function updateFormValue(name, value) {
     setFormValues((current) => ({ ...current, [name]: value }));
@@ -1088,21 +1305,15 @@ function AccountRiskWhatIf({
   function handleReset() {
     setClosedLegIds([]);
     setHypotheticalPosition(null);
+    setRollLegId(null);
+    setRollQuote(null);
     setFormError("");
+    setRollError("");
   }
 
   return (
     <div className="account-risk-what-if">
       <div className="account-what-if-actions">
-        <button
-          type="button"
-          className="account-what-if-toggle"
-          aria-expanded={showControls}
-          onClick={() => setShowControls((visible) => !visible)}
-        >
-          {showControls ? "Hide what-if controls" : "What if?"}
-          {hasChanges ? " (scenario active)" : ""}
-        </button>
         <div className="account-toolbar-actions">
           <button
             type="button"
@@ -1119,6 +1330,15 @@ function AccountRiskWhatIf({
             {showAccountEdit ? "Close account details" : "Edit account"}
           </button>
         </div>
+        <button
+          type="button"
+          className="account-what-if-toggle"
+          aria-expanded={showControls}
+          onClick={() => setShowControls((visible) => !visible)}
+        >
+          {showControls ? "Hide what-if controls" : "What if?"}
+          {hasChanges ? " (scenario active)" : ""}
+        </button>
       </div>
 
       {showControls && (
@@ -1299,30 +1519,177 @@ function AccountRiskWhatIf({
           );
           if (!leg) return null;
 
+          const info = typeInfo(leg);
+          const legId = String(leg.id);
           const canClose =
-            typeInfo(leg).supported &&
+            info.supported &&
             currentPositionMark(leg, marks, underlyingPrices) != null;
-          const checked = closedLegIds.includes(String(leg.id));
+          const isRollable = info.supported && info.isOption && info.isSell;
+          const isRolled = rollScenario?.originalLegId === legId;
+          const checked = closedLegIds.includes(legId) || isRolled;
+          const rollOpen = rollLegId === legId;
 
           return (
-            <div className="account-position-row" key={item.legId}>
-              <input
-                type="checkbox"
-                checked={checked}
-                disabled={!canClose}
-                aria-label={`Close ${positionDescription(leg)} in what-if`}
-                title={
-                  canClose
-                    ? "Exclude this position from the what-if"
-                    : "A current mark is required to simulate closing this position"
-                }
-                onChange={() => toggleClosedPosition(leg)}
-              />
-              <span>
-                {leg.ticker} {leg.type} {leg.qty}
-                {leg.strike ? ` @ ${leg.strike}` : ""}
-              </span>
-              <strong>{displayMoney(item.requiredMargin)}</strong>
+            <div className="account-position-entry" key={item.legId}>
+              <div className="account-position-row">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={!canClose || isRolled}
+                  aria-label={`Close ${positionDescription(leg)} in what-if`}
+                  title={
+                    isRolled
+                      ? "This position is closed by the active roll scenario"
+                      : canClose
+                        ? "Exclude this position from the what-if"
+                        : "A current mark is required to simulate closing this position"
+                  }
+                  onChange={() => toggleClosedPosition(leg)}
+                />
+                <span className="account-position-name">
+                  {leg.ticker} {leg.type} {leg.qty}
+                  {leg.strike ? ` @ ${leg.strike}` : ""}
+                  {isRollable && (
+                    <button
+                      type="button"
+                      className="account-roll-toggle"
+                      aria-expanded={rollOpen}
+                      disabled={rollLoading}
+                      onClick={() => toggleRollEditor(leg)}
+                    >
+                      {rollOpen ? "Cancel roll" : "Evaluate roll"}
+                    </button>
+                  )}
+                </span>
+                <strong>{displayMoney(item.requiredMargin)}</strong>
+              </div>
+
+              {rollOpen && isRollable && (
+                <form
+                  className="account-roll-panel"
+                  onSubmit={(event) => handleEvaluateRoll(event, leg)}
+                >
+                  <p>
+                    Roll this short {info.type.endsWith("_call") ? "call" : "put"}
+                    {" "}to a new strike and expiration. The option side is kept
+                    the same.
+                  </p>
+                  <div className="account-roll-fields">
+                    <label>
+                      New strike
+                      <input
+                        className="input"
+                        type="number"
+                        min="0.01"
+                        step="any"
+                        required
+                        disabled={rollLoading}
+                        value={rollFormValues.strike}
+                        onChange={(event) => {
+                          setRollFormValues((current) => ({
+                            ...current,
+                            strike: event.target.value,
+                          }));
+                          setRollQuote(null);
+                          setRollError("");
+                        }}
+                      />
+                    </label>
+                    <label>
+                      New expiration
+                      <input
+                        className="input"
+                        type="date"
+                        min={date}
+                        required
+                        disabled={rollLoading}
+                        value={rollFormValues.expiry}
+                        onChange={(event) => {
+                          setRollFormValues((current) => ({
+                            ...current,
+                            expiry: event.target.value,
+                          }));
+                          setRollQuote(null);
+                          setRollError("");
+                        }}
+                      />
+                    </label>
+                    <label>
+                      New contracts
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        value={rollFormValues.qty}
+                        onChange={(event) => {
+                          setRollFormValues((current) => ({
+                            ...current,
+                            qty: event.target.value,
+                          }));
+                          setRollError("");
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <button type="submit" disabled={rollLoading || date !== today()}>
+                    {rollLoading ? "Getting quotes…" : "Get quote & evaluate"}
+                  </button>
+                  {date !== today() && (
+                    <p className="account-roll-message">
+                      Current quotes are only available for today's account date.
+                    </p>
+                  )}
+                  {rollError && (
+                    <p className="account-roll-message" role="alert">
+                      {rollError}
+                    </p>
+                  )}
+                  {rollScenario?.originalLegId === legId && (
+                    <div className="account-roll-results" aria-live="polite">
+                      <p>
+                        Existing midpoint: {displayPreciseMoney(rollScenario.originalMark)}
+                        {" · "}Replacement midpoint:{" "}
+                        {displayPreciseMoney(rollScenario.position.mark)}
+                      </p>
+                      <p>
+                        Minimum contracts for a net credit:{" "}
+                        {minimumRollContracts == null
+                          ? "Unavailable"
+                          : minimumRollContracts}
+                      </p>
+                      <p>
+                        Net credit at {rollScenario.position.qty} contracts:{" "}
+                        <strong
+                          style={{
+                            color:
+                              rollNetCredit >= 0
+                                ? "var(--color-positive)"
+                                : "var(--color-negative)",
+                          }}
+                        >
+                          {displayPreciseMoney(rollNetCredit)}
+                        </strong>
+                      </p>
+                      <p>
+                        Margin requirement: {displayMoney(metrics.houseRequirement)}
+                        {" → "}{displayMoney(newCurrentMargin)}
+                        {" · Change: "}
+                        {displayPreciseMoney(
+                          newCurrentMargin == null || metrics.houseRequirement == null
+                            ? null
+                            : newCurrentMargin - metrics.houseRequirement
+                        )}
+                      </p>
+                      <p className="account-roll-note">
+                        Gross estimates use indicative midpoint quotes and exclude fees.
+                        The risk chart reflects the selected contract quantity.
+                      </p>
+                    </div>
+                  )}
+                </form>
+              )}
             </div>
           );
         })}

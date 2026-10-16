@@ -474,9 +474,6 @@ export default function DashboardTab({
 
     return {
       netPL: filteredNetPL,
-      optionPL: filteredOptionPL,
-      stockPL: filteredStockPL,
-      allInRealizedPL: filteredOptionPL + filteredStockPL,
       netCashFlow: filteredNetCashFlow,
       openLegCount: filteredLegs.filter((leg) => leg.isOpen).length,
       closedLegCount: filteredLegs.filter((leg) => !leg.isOpen).length,
@@ -487,8 +484,6 @@ export default function DashboardTab({
     accountFilteredLegs,
     filteredCampaigns,
     filteredNetPL,
-    filteredOptionPL,
-    filteredStockPL,
     filteredNetCashFlow,
     open.length,
     closed.length
@@ -560,30 +555,20 @@ export default function DashboardTab({
                 </div>
               </div>
             </div>
-            <p className="dashboard-stock-pl-summary">
-              Stock realized P&amp;L (separate):{" "}
-              <strong className={cashClass(displaySummary.stockPL)}>
-                {fmtWholeDollars(displaySummary.stockPL)}
-              </strong>
-              {" · "}All-in realized P&amp;L:{" "}
-              <strong className={cashClass(displaySummary.allInRealizedPL)}>
-                {fmtWholeDollars(displaySummary.allInRealizedPL)}
-              </strong>
-            </p>
           </div>
 
           <div className="summary-card">
             <h3 className="summary-card-title">Active Positions</h3>
             <div className="summary-card-metrics summary-card-metrics--three">
               <div className="summary-metric-item">
-                <div className="summary-metric-label">Total Margin</div>
+                <div className="summary-metric-label">Margin</div>
                 <div className="summary-metric-val">
                   {fmtWholeDollars(topMetrics.totalMargin)}
                 </div>
               </div>
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
-                <div className="summary-metric-label">Options weighted AROM</div>
+                <div className="summary-metric-label">Weighted AROM</div>
                 <div className="summary-metric-val">
                   {topMetrics.weightedArom == null
                     ? "—"
@@ -595,7 +580,7 @@ export default function DashboardTab({
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
                 <div className="summary-metric-label">
-                  {performanceModeLabel} this week
+                  {performanceMode === "all-in" ? "All-in / wk" : "Options / wk"}
                 </div>
                 <div className={`summary-metric-val ${cashClass(currentWeekPremium)}`}>
                   {fmtWholeDollars(currentWeekPremium)}
@@ -607,15 +592,7 @@ export default function DashboardTab({
       </div>
 
       {/* Performance Overview */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: "8px",
-          marginTop: "24px"
-        }}
-      >
+      <div className="dashboard-performance-header">
         <h3 style={{ color: "#9fb3ff", margin: 0 }}>
           Performance Overview
         </h3>

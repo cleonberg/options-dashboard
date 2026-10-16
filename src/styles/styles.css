@@ -761,11 +761,12 @@ button.secondary:hover {
   height: 24px;
 }
 
-.dashboard-stock-pl-summary {
-  margin: 12px 0 0;
-  color: var(--text-muted, #9fb3ff);
-  font-size: 12px;
-  line-height: 1.5;
+.dashboard-performance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  margin-top: 24px;
 }
 
 .dashboard-performance-mode {
@@ -793,6 +794,29 @@ button.secondary:hover {
 }
 
 @media (max-width: 600px) {
+  .dashboard-performance-header {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    column-gap: 12px;
+    row-gap: 8px;
+  }
+
+  .dashboard-performance-mode {
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  .dashboard-performance-mode > span,
+  .dashboard-performance-mode button {
+    white-space: nowrap;
+  }
+
+  .dashboard-performance-mode button {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
   .summary-card-metrics--three {
     grid-template-columns:
       minmax(0, 1fr) 1px
@@ -1563,6 +1587,62 @@ button.secondary:hover {
   font-size: 13px;
 }
 
+.account-position-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-roll-toggle {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.account-roll-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 8px 122px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.account-roll-panel > p,
+.account-roll-results p {
+  margin: 0;
+}
+
+.account-roll-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.account-roll-fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.account-roll-results {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+}
+
+.account-roll-message {
+  color: var(--color-negative);
+  font-size: 12px;
+}
+
+.account-roll-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .account-position-row input[type="checkbox"] {
   margin: 0 auto;
 }
@@ -1611,6 +1691,10 @@ button.secondary:hover {
 
   .account-position-row {
     grid-template-columns: 92px minmax(0, 1fr) auto;
+  }
+
+  .account-roll-panel {
+    margin-left: 0;
   }
 
   .account-position-header {
