@@ -594,7 +594,7 @@ function getMarginRatio(
   marginRequirementOverrides = {}
 ) {
   const ticker = String(leg.ticker ?? "").trim().toUpperCase();
-  const type = String(leg.type ?? "").toLowerCase();
+  const type = normalizeMarginType(leg.type);
   const isOption = type.endsWith("_call") || type.endsWith("_put");
   const isShort = type.startsWith("sell_");
   const overrideKey = isOption
@@ -625,13 +625,20 @@ function getMarginRatio(
   );
 }
 
+function normalizeMarginType(type) {
+  return String(type ?? "").trim().toLowerCase();
+}
+
 function standaloneMargin(
   leg,
   quantity,
   accountType,
   marginRequirementOverrides = {}
 ) {
-  const { type, strike, openPrice } = leg;
+  const { strike, openPrice } = leg;
+  const type = normalizeMarginType(leg.type);
+  if (type === "sell_call") return 0;
+
   const marginRatio = getMarginRatio(
     leg,
     accountType,
@@ -667,7 +674,7 @@ function nextDateKey(dateKey) {
 }
 
 function normalizeLegForMargin(leg, index) {
-  const type = String(leg.type || "").toLowerCase();
+  const type = normalizeMarginType(leg.type);
   const right = type.endsWith("_call")
     ? "call"
     : type.endsWith("_put")
@@ -768,7 +775,7 @@ function evaluateMarginFromActiveLegs(
 
   for (let i = 0; i < activeLegs.length; i += 1) {
     const leg = activeLegs[i];
-    if (!leg.spreadKey) continue;
+    if (!leg.spreadKey || leg.type === "sell_call") continue;
 
     const group = spreadGroups.get(leg.spreadKey) || [];
     group.push(leg);
@@ -1024,7 +1031,7 @@ export function computeAccountMarginEstimate(
   const spreadGroups = new Map();
 
   for (const leg of activeLegs) {
-    if (!leg.spreadKey) continue;
+    if (!leg.spreadKey || leg.type === "sell_call") continue;
     const group = spreadGroups.get(leg.spreadKey) || [];
     group.push(leg);
     spreadGroups.set(leg.spreadKey, group);
@@ -1082,6 +1089,12 @@ export function computeAccountMarginEstimate(
     if (!Number.isFinite(quantity) || quantity <= 0) {
       position.requiredMargin = null;
       position.status = "Invalid quantity";
+      continue;
+    }
+
+    if (leg.type === "sell_call") {
+      position.requiredMargin = 0;
+      position.status = "Short-call margin ignored";
       continue;
     }
 
@@ -1282,7 +1295,7 @@ export function computeAccountMarginByCampaign(
 }
 
 function getAccountPositionInfo(leg) {
-  const type = String(leg.type || "").toLowerCase();
+  const type = normalizeMarginType(leg.type);
   const isOption = type.endsWith("_call") || type.endsWith("_put");
   const isStock = type.endsWith("_stock");
   const isBuy = type.startsWith("buy_");

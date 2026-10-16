@@ -1547,6 +1547,12 @@ button.secondary:hover {
   margin-top: 10px;
 }
 
+.account-margin-assumption {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .account-position-row {
   display: grid;
   grid-template-columns: 110px minmax(0, 1fr) auto;

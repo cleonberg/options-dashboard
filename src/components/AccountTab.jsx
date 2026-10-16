@@ -1280,6 +1280,13 @@ function AccountRiskWhatIf({
       </div>
 
       <div className="account-position-list">
+        {metrics.marginEstimate.positions.some(
+          (position) => position.status === "Short-call margin ignored"
+        ) && (
+          <p className="account-margin-assumption">
+            Short-call margin is excluded; calls are assumed covered by shares.
+          </p>
+        )}
         <div className="account-position-header">
           <span>Close in what-if</span>
           <span>Position</span>
