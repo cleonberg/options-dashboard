@@ -70,6 +70,10 @@ function isStockLeg(leg) {
   return String(leg.type || "").toLowerCase().includes("stock");
 }
 
+function isShortTermLeg(leg) {
+  return leg.term !== "long-term";
+}
+
 function sumRealizedPL(legs, startDateFilter, endDateFilter) {
   return legs.reduce((total, leg) => {
     if (leg.isOpen) return total;
@@ -104,7 +108,7 @@ export default function DashboardTab({
     useState(false);
   const [hasOpenedClosedCampaigns, setHasOpenedClosedCampaigns] =
     useState(false);
-  const [performanceMode, setPerformanceMode] = useState("options");
+  const [performanceMode, setPerformanceMode] = useState("short-term");
 
   const legsByCampaign = useMemo(() => {
     const map = new Map();
@@ -313,62 +317,32 @@ export default function DashboardTab({
     );
   }, [searchFilteredCampaigns, accountFilteredLegs]);
 
-  const searchFilteredOptionLegs = useMemo(
-    () => searchFilteredLegs.filter((leg) => !isStockLeg(leg)),
-    [searchFilteredLegs]
+  const performanceLegs = useMemo(
+    () =>
+      performanceMode === "all"
+        ? searchFilteredLegs
+        : searchFilteredLegs.filter(isShortTermLeg),
+    [performanceMode, searchFilteredLegs]
   );
-  const searchFilteredStockLegs = useMemo(
-    () => searchFilteredLegs.filter(isStockLeg),
-    [searchFilteredLegs]
-  );
-
-  const dashboardDailyCashFlowSeries = useMemo(
+  const performanceDailyCashFlowSeries = useMemo(
     () =>
       computeDailyCashFlowSeries(
-        searchFilteredLegs,
+        performanceLegs,
         searchFilteredCampaigns
       ),
-    [searchFilteredLegs, searchFilteredCampaigns]
+    [performanceLegs, searchFilteredCampaigns]
   );
-  const optionsDailyCashFlowSeries = useMemo(
-    () =>
-      computeDailyCashFlowSeries(
-        searchFilteredOptionLegs,
-        searchFilteredCampaigns
-      ),
-    [searchFilteredOptionLegs, searchFilteredCampaigns]
-  );
-
-  const performanceLegs =
-    performanceMode === "all-in" ? searchFilteredLegs : searchFilteredOptionLegs;
-  const performanceDailyCashFlowSeries =
-    performanceMode === "all-in"
-      ? dashboardDailyCashFlowSeries
-      : optionsDailyCashFlowSeries;
 
   // Realized P/L = closed-leg P/L based on closeDate.
-  const filteredOptionPL = useMemo(
+  const filteredNetPL = useMemo(
     () =>
       sumRealizedPL(
-        searchFilteredOptionLegs,
+        performanceLegs,
         startDateFilter,
         endDateFilter
       ),
-    [searchFilteredOptionLegs, startDateFilter, endDateFilter]
+    [performanceLegs, startDateFilter, endDateFilter]
   );
-  const filteredStockPL = useMemo(
-    () =>
-      sumRealizedPL(
-        searchFilteredStockLegs,
-        startDateFilter,
-        endDateFilter
-      ),
-    [searchFilteredStockLegs, startDateFilter, endDateFilter]
-  );
-  const filteredNetPL =
-    performanceMode === "all-in"
-      ? filteredOptionPL + filteredStockPL
-      : filteredOptionPL;
 
   // Total net cash flow for the selected date range.
   // Uses the same cash-flow engine as the other cash-flow metrics.
@@ -393,7 +367,9 @@ export default function DashboardTab({
     const openLegs = accountFilteredLegs.filter(
       (leg) => leg.isOpen && openCampaignIds.has(normalizeId(leg.campaignId))
     );
-    const optionOpenLegs = openLegs.filter((leg) => !isStockLeg(leg));
+    const performanceOpenLegs = openLegs.filter(
+      (leg) => performanceMode === "all" || isShortTermLeg(leg)
+    );
   
     const totalMargin = computeAccountMarginByCampaign(
       openLegs,
@@ -405,7 +381,7 @@ export default function DashboardTab({
       }
     ).total;
     const unrealizedPL = computeCampaignProjectedPL(
-      performanceMode === "all-in" ? openLegs : optionOpenLegs
+      performanceOpenLegs
     );
   
     let weightedAromTotal = 0;
@@ -475,8 +451,12 @@ export default function DashboardTab({
     return {
       netPL: filteredNetPL,
       netCashFlow: filteredNetCashFlow,
-      openLegCount: filteredLegs.filter((leg) => leg.isOpen).length,
-      closedLegCount: filteredLegs.filter((leg) => !leg.isOpen).length,
+      openLegCount: filteredLegs.filter(
+        (leg) => leg.isOpen && (performanceMode === "all" || isShortTermLeg(leg))
+      ).length,
+      closedLegCount: filteredLegs.filter(
+        (leg) => !leg.isOpen && (performanceMode === "all" || isShortTermLeg(leg))
+      ).length,
       activeCampaigns: open.length,
       closedCampaigns: closed.length
     };
@@ -486,13 +466,14 @@ export default function DashboardTab({
     filteredNetPL,
     filteredNetCashFlow,
     open.length,
-    closed.length
+    closed.length,
+    performanceMode
   ]);
 
   const campaignPnlTotal =
     displaySummary.netPL + topMetrics.unrealizedPL;
   const performanceModeLabel =
-    performanceMode === "all-in" ? "All-in" : "Options only";
+    performanceMode === "all" ? "All" : "Short Term";
 
   // This week's net premium.
   const currentWeekPremium = useMemo(() => {
@@ -580,7 +561,7 @@ export default function DashboardTab({
               <div className="summary-card-divider" />
               <div className="summary-metric-item">
                 <div className="summary-metric-label">
-                  {performanceMode === "all-in" ? "All-in / wk" : "Options / wk"}
+                  {performanceMode === "all" ? "All / wk" : "Short Term / wk"}
                 </div>
                 <div className={`summary-metric-val ${cashClass(currentWeekPremium)}`}>
                   {fmtWholeDollars(currentWeekPremium)}
@@ -600,17 +581,17 @@ export default function DashboardTab({
           <span>Display:</span>
           <button
             type="button"
-            aria-pressed={performanceMode === "options"}
-            onClick={() => setPerformanceMode("options")}
+            aria-pressed={performanceMode === "short-term"}
+            onClick={() => setPerformanceMode("short-term")}
           >
-            Options only
+            Short Term
           </button>
           <button
             type="button"
-            aria-pressed={performanceMode === "all-in"}
-            onClick={() => setPerformanceMode("all-in")}
+            aria-pressed={performanceMode === "all"}
+            onClick={() => setPerformanceMode("all")}
           >
-            All-in
+            All
           </button>
         </div>
       </div>

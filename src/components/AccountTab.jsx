@@ -648,6 +648,15 @@ function formatCompactDollars(value) {
   }).format(value);
 }
 
+function compareAccountValuesDescending(a, b) {
+  const aValue = Number.isFinite(a.accountValue) ? a.accountValue : null;
+  const bValue = Number.isFinite(b.accountValue) ? b.accountValue : null;
+
+  if (aValue == null) return bValue == null ? 0 : 1;
+  if (bValue == null) return -1;
+  return bValue - aValue;
+}
+
 function AccountPositionBreakdownChart({
   accountRows,
   selectedAccountId,
@@ -676,27 +685,29 @@ function AccountPositionBreakdownChart({
     }
   }
 
-  const data = accountRows.map(({ account, metrics }) => {
-    const accountId = String(account.id);
-    const values = Object.fromEntries(
-      positionSeries.map((series) => [
-        series.key,
-        series.accountId === accountId ? series.value : 0,
-      ])
-    );
-    return {
-      accountId,
-      name: account.name || "Unnamed account",
-      cashValue: metrics.cashBalance,
-      accountValue: metrics.totalAccountValue,
-      marginEquity: metrics.marginEquity,
-      ...values,
-    };
-  });
+  const data = accountRows
+    .map(({ account, metrics }) => {
+      const accountId = String(account.id);
+      const values = Object.fromEntries(
+        positionSeries.map((series) => [
+          series.key,
+          series.accountId === accountId ? series.value : 0,
+        ])
+      );
+      return {
+        accountId,
+        name: account.name || "Unnamed account",
+        cashValue: metrics.cashBalance,
+        accountValue: metrics.totalAccountValue,
+        marginEquity: metrics.marginEquity,
+        ...values,
+      };
+    })
+    .sort(compareAccountValuesDescending);
 
   if (data.length === 0) return null;
 
-  const chartHeight = Math.max(240, data.length * 76 + 76);
+  const chartHeight = Math.max(180, data.length * 52 + 44);
   const hasIncompleteValues = accountRows.some(
     ({ metrics }) =>
       metrics.cashBalance == null ||
@@ -734,7 +745,7 @@ function AccountPositionBreakdownChart({
             layout="vertical"
             stackOffset="sign"
             margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
-            barCategoryGap="30%"
+            barCategoryGap="15%"
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#24345f" />
             <XAxis
@@ -875,18 +886,20 @@ function AccountSummaryChart({
   selectedAccountId,
   onSelectAccount,
 }) {
-  const data = accountRows.map(({ account, metrics }) => ({
-    accountId: String(account.id),
-    name: account.name || "Unnamed account",
-    accountValue: metrics.totalAccountValue,
-    marginEquity: metrics.marginEquity,
-    houseRequirement: metrics.houseRequirement,
-    marginAvailable: metrics.excessMargin,
-  }));
+  const data = accountRows
+    .map(({ account, metrics }) => ({
+      accountId: String(account.id),
+      name: account.name || "Unnamed account",
+      accountValue: metrics.totalAccountValue,
+      marginEquity: metrics.marginEquity,
+      houseRequirement: metrics.houseRequirement,
+      marginAvailable: metrics.excessMargin,
+    }))
+    .sort(compareAccountValuesDescending);
 
   if (data.length === 0) return null;
 
-  const chartHeight = Math.max(240, data.length * 76 + 76);
+  const chartHeight = Math.max(180, data.length * 52 + 44);
 
   function selectFromPayload(payload) {
     const row = payload?.payload || payload;
@@ -908,7 +921,7 @@ function AccountSummaryChart({
             data={data}
             layout="vertical"
             margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
-            barCategoryGap="30%"
+            barCategoryGap="15%"
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#24345f" />
             <XAxis

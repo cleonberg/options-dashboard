@@ -54,9 +54,7 @@ export default function AccountRiskChart({
   return (
     <div className="card account-risk-chart">
       <h3 className="account-risk-chart-title">
-        {comparing ? "Current vs. what-if " : ""}
-        account value, margin equity, house requirement, and excess margin by
-        price scenario
+        Estimated Change in Margin Risk
       </h3>
       {comparing && <p className="account-risk-chart-comparison-note">Dashed lines show current positions.</p>}
       {!complete ? (

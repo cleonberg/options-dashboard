@@ -227,6 +227,17 @@ export default function LegRow({
             />
 
             <EditableField
+              label="Term"
+              value={leg.term || "short-term"}
+              type="select"
+              options={[
+                { value: "short-term", label: "Short Term" },
+                { value: "long-term", label: "Long Term" },
+              ]}
+              onChange={(v) => update("term", v)}
+            />
+
+            <EditableField
               label="Qty"
               value={leg.qty}
               type="number"

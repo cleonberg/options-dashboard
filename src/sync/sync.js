@@ -264,6 +264,7 @@ function normalizeCampaign(raw) {
 function normalizeLeg(raw) {
   return {
     ...raw,
+    term: raw.term === "long-term" ? "long-term" : "short-term",
     deleted: !!raw.deleted,
     dirty: !!raw.dirty,
     updatedAt: toMillis(raw.updatedAt) ?? Date.now(),
@@ -927,6 +928,7 @@ export async function rollLeg(uid, sourceLeg, rollFields = {}) {
   await addLeg(uid, {
     ticker: sourceLeg.ticker,
     type: sourceLeg.type,     
+    term: sourceLeg.term || "short-term",
     qty: rollFields.qty !== undefined ? rollFields.qty : sourceLeg.qty,       
     strike: rollFields.strike !== undefined ? rollFields.strike : sourceLeg.strike, 
     expiry: rollFields.expiry !== undefined ? rollFields.expiry : sourceLeg.expiry, 

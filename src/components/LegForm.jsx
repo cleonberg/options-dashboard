@@ -10,6 +10,7 @@ const getLocalDateStr = (d = new Date()) => {
 
 export default function LegForm({ selectedCampaign, onAddLeg }) {
   const [type, setType] = useState("sell_put");
+  const [term, setTerm] = useState("short-term");
   const [qty, setQty] = useState("");
   const [strike, setStrike] = useState("");
   const [expiry, setExpiry] = useState("");
@@ -35,6 +36,7 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
       campaignId: selectedCampaign.id,
       ticker: selectedCampaign.ticker,
       type,
+      term,
       qty: Number(qty),
       strike: isOption ? Number(strike) : null,
       expiry: isOption ? expiry : null,
@@ -50,6 +52,7 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
 
     // Reset form
     setQty("");
+    setTerm("short-term");
     setStrike("");
     setExpiry("");
     setOpenPrice("");
@@ -78,6 +81,19 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
             <option value="sell_stock">Sell Stock</option>
             <option value="assignment_put">Assignment (Put)</option>
             <option value="assignment_call">Assignment (Call)</option>
+          </select>
+        </div>
+
+        <div className="leg-form-field">
+          <label htmlFor="leg-term">Term</label>
+          <select
+            id="leg-term"
+            className="input"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          >
+            <option value="short-term">Short Term</option>
+            <option value="long-term">Long Term</option>
           </select>
         </div>
 
