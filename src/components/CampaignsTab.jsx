@@ -272,6 +272,7 @@ export default function CampaignsTab(props) {
           campaigns={campaigns}
           uid={uid}
           reloadAll={props.reloadAll}
+          collapseClosedLegs
           enableSort={false}
           enablePaging={false}
           enableFilters={false}

@@ -572,6 +572,27 @@ button.secondary:hover {
   gap: 12px;
 }
 
+.closed-leg-section {
+  margin-top: 16px;
+}
+
+.closed-leg-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  color: #94a3b8;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.closed-leg-list {
+  margin-top: 10px;
+}
+
 .leg-row {
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -583,6 +604,16 @@ button.secondary:hover {
 
 .leg-row:hover {
   border-color: var(--border-btn);
+}
+
+.leg-group-row > .leg-details > .leg-row {
+  margin-left: 12px;
+}
+
+.leg-group-row .roll-action-form > p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 .leg-summary {

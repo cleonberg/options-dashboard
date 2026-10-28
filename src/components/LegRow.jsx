@@ -42,10 +42,13 @@ export default function LegRow({
   // Roll Form State
   const [rollDate, setRollDate] = useState(todayStr);
   const [rollClosePrice, setRollClosePrice] = useState("");
+  const [rollQty, setRollQty] = useState(leg.qty ?? 1);
+  const [rollCampaignId, setRollCampaignId] = useState(leg.campaignId ?? "");
   const [rollNewQty, setRollNewQty] = useState(leg.qty ?? 1);
   const [rollNewStrike, setRollNewStrike] = useState(leg.strike ?? "");
   const [rollNewExpiry, setRollNewExpiry] = useState(formatDate(leg.expiry));
   const [rollNewOpenPrice, setRollNewOpenPrice] = useState("");
+  const [rollError, setRollError] = useState("");
 
   const pl = computeLegPL(leg);
   const isOption = leg.type ? !leg.type.includes("stock") : true;
@@ -79,6 +82,16 @@ export default function LegRow({
       value: c.id,
       label: `${getCampaignLabel(c)}${c.id === leg.campaignId ? " (Current)" : ""}`,
     }));
+  const sourceCampaign = campaigns.find((c) => c.id === leg.campaignId);
+  const rollCampaignOptions = campaigns
+    .filter((c) =>
+      c.ticker?.toLowerCase() === leg.ticker?.toLowerCase() &&
+      (!sourceCampaign?.accountId || c.accountId === sourceCampaign.accountId)
+    )
+    .map((c) => ({
+      value: c.id,
+      label: `${getCampaignLabel(c)}${c.id === leg.campaignId ? " (Current)" : ""}`,
+    }));
 
   const openDateStr = formatDate(leg.openDate);
   const closeDateStr = formatDate(leg.closeDate);
@@ -92,10 +105,13 @@ export default function LegRow({
   const handleOpenRollForm = () => {
     setRollDate(getLocalDateStr());
     setRollClosePrice("");
+    setRollQty(leg.qty ?? 1);
+    setRollCampaignId(leg.campaignId ?? "");
     setRollNewQty(leg.qty ?? 1);
     setRollNewStrike(leg.strike ?? "");
     setRollNewExpiry(formatDate(leg.expiry)); // FIXED: Format expiry for date input
     setRollNewOpenPrice("");
+    setRollError("");
     setActiveAction("roll");
   };
 
@@ -114,18 +130,26 @@ export default function LegRow({
 
   const handleConfirmRoll = async (e) => {
     e.preventDefault();
-    await rollLeg(uid, leg, {
-      closeDate: rollDate,
-      closePrice: rollClosePrice === "" ? null : Number(rollClosePrice),
-      rollDate: rollDate,
-      openPrice: rollNewOpenPrice === "" ? null : Number(rollNewOpenPrice),
-      qty: rollNewQty === "" ? leg.qty : Number(rollNewQty),
-      strike: isOption && rollNewStrike !== "" ? Number(rollNewStrike) : leg.strike,
-      expiry: isOption ? rollNewExpiry : formatDate(leg.expiry),
-    });
-    setActiveAction(null);
-    if (onActionComplete) onActionComplete();
-    if (reloadAll) reloadAll();
+    setRollError("");
+    try {
+      await rollLeg(uid, leg, {
+        closeDate: rollDate,
+        closePrice: rollClosePrice === "" ? null : Number(rollClosePrice),
+        rollDate: rollDate,
+        rollQty: Number(rollQty),
+        campaignId: rollCampaignId || null,
+        openPrice: rollNewOpenPrice === "" ? null : Number(rollNewOpenPrice),
+        qty: rollNewQty === "" ? Number(rollQty) : Number(rollNewQty),
+        strike: isOption && rollNewStrike !== "" ? Number(rollNewStrike) : leg.strike,
+        expiry: isOption ? rollNewExpiry : formatDate(leg.expiry),
+      });
+      setActiveAction(null);
+      if (onActionComplete) onActionComplete();
+      if (reloadAll) reloadAll();
+    } catch (error) {
+      console.error("[LegRow] roll failed", error);
+      setRollError(error.message || "Unable to roll this leg.");
+    }
   };
 
   return (
@@ -358,9 +382,42 @@ export default function LegRow({
                   />
                 </div>
                 <div>
+                  <label>Destination Campaign</label>
+                  <select
+                    value={rollCampaignId}
+                    onChange={(e) => setRollCampaignId(e.target.value)}
+                  >
+                    <option value="">Unassigned</option>
+                    {rollCampaignOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Quantity to Roll</label>
+                  <input
+                    type="number"
+                    min={isOption ? 1 : "0.00000001"}
+                    max={Number(leg.qty) > 0 ? Number(leg.qty) : undefined}
+                    step={isOption ? 1 : "any"}
+                    value={rollQty}
+                    onChange={(e) => {
+                      const nextQty = e.target.value;
+                      const newQtyMatchesRollQty = Number(rollNewQty) === Number(rollQty);
+                      setRollQty(nextQty);
+                      if (newQtyMatchesRollQty) setRollNewQty(nextQty);
+                    }}
+                    required
+                  />
+                </div>
+                <div>
                   <label>New Leg Qty</label>
                   <input
                     type="number"
+                    min={isOption ? 1 : "0.00000001"}
+                    step={isOption ? 1 : "any"}
                     value={rollNewQty}
                     onChange={(e) => setRollNewQty(e.target.value)}
                     required
@@ -400,6 +457,7 @@ export default function LegRow({
                   />
                 </div>
               </div>
+              {rollError && <p role="alert">{rollError}</p>}
               <div className="action-form-buttons">
                 <button type="submit" className="btn-confirm">
                   Confirm Roll

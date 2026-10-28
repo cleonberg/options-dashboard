@@ -917,26 +917,292 @@ export async function deleteLeg(uid, id) {
   await syncCampaignDates(uid, existing.campaignId);
 }
 
+async function resolveRollCampaignId(uid, sourceLeg, requestedCampaignId) {
+  const campaignId = requestedCampaignId === undefined
+    ? sourceLeg.campaignId || null
+    : requestedCampaignId || null;
+  if (!campaignId) return null;
+
+  const destinationCampaign = await dbLocal.campaigns.get(campaignId);
+  if (!destinationCampaign || destinationCampaign.uid !== uid || destinationCampaign.deleted) {
+    throw new Error("The destination campaign could not be found.");
+  }
+  if (destinationCampaign.ticker?.toLowerCase() !== sourceLeg.ticker?.toLowerCase()) {
+    throw new Error("The destination campaign must use the same ticker.");
+  }
+
+  if (sourceLeg.campaignId) {
+    const sourceCampaign = await dbLocal.campaigns.get(sourceLeg.campaignId);
+    if (
+      sourceCampaign?.accountId &&
+      destinationCampaign.accountId &&
+      sourceCampaign.accountId !== destinationCampaign.accountId
+    ) {
+      throw new Error("The destination campaign must belong to the same account.");
+    }
+  }
+
+  return campaignId;
+}
+
 export async function rollLeg(uid, sourceLeg, rollFields = {}) { 
-  await editLeg(uid, {
-    ...sourceLeg,
-    isOpen: false,
-    closeDate: rollFields.closeDate,
-    closePrice: rollFields.closePrice,
+  if (!uid || !sourceLeg?.id) {
+    throw new Error("A user and source leg are required to roll a leg.");
+  }
+
+  const now = nowMillis();
+  const rolledLegId = crypto.randomUUID();
+  let sourceCampaignId;
+  let destinationCampaignId;
+
+  await dbLocal.transaction("rw", dbLocal.legs, dbLocal.campaigns, async () => {
+    const currentLeg = await dbLocal.legs.get(sourceLeg.id);
+    if (!currentLeg || currentLeg.uid !== uid || currentLeg.deleted || !currentLeg.isOpen) {
+      throw new Error("The open leg could not be found. Refresh and try again.");
+    }
+
+    const sourceQty = Number(currentLeg.qty);
+    const rollQty = Number(rollFields.rollQty ?? sourceQty);
+    const newQty = Number(rollFields.qty ?? rollQty);
+    const isOption = currentLeg.type ? !currentLeg.type.includes("stock") : true;
+
+    if (!Number.isFinite(sourceQty) || sourceQty <= 0) {
+      throw new Error("The source leg has an invalid quantity.");
+    }
+    if (!Number.isFinite(rollQty) || rollQty <= 0 || rollQty > sourceQty) {
+      throw new Error("Quantity to roll must be greater than zero and no more than the open quantity.");
+    }
+    if (!Number.isFinite(newQty) || newQty <= 0) {
+      throw new Error("New leg quantity must be greater than zero.");
+    }
+    if (isOption && (!Number.isInteger(rollQty) || !Number.isInteger(newQty))) {
+      throw new Error("Option quantities must be whole contracts.");
+    }
+
+    sourceCampaignId = currentLeg.campaignId;
+    destinationCampaignId = await resolveRollCampaignId(uid, currentLeg, rollFields.campaignId);
+
+    if (rollQty < sourceQty) {
+      const remainingLeg = normalizeLeg({
+        ...currentLeg,
+        qty: sourceQty - rollQty,
+        updatedAt: now,
+        clientUpdatedAt: now,
+        dirty: true,
+      });
+      const closedPortion = normalizeLeg({
+        ...currentLeg,
+        id: crypto.randomUUID(),
+        qty: rollQty,
+        isOpen: false,
+        closeDate: rollFields.closeDate,
+        closePrice: rollFields.closePrice,
+        updatedAt: now,
+        clientUpdatedAt: now,
+        serverUpdatedAt: null,
+        deleted: false,
+        dirty: true,
+      });
+      await dbLocal.legs.put(remainingLeg);
+      await dbLocal.legs.put(closedPortion);
+    } else {
+      await dbLocal.legs.put(normalizeLeg({
+        ...currentLeg,
+        isOpen: false,
+        closeDate: rollFields.closeDate,
+        closePrice: rollFields.closePrice,
+        updatedAt: now,
+        clientUpdatedAt: now,
+        dirty: true,
+      }));
+    }
+
+    await dbLocal.legs.put(normalizeLeg({
+      id: rolledLegId,
+      uid,
+      ticker: currentLeg.ticker,
+      type: currentLeg.type,
+      term: currentLeg.term || "short-term",
+      qty: newQty,
+      strike: rollFields.strike !== undefined ? rollFields.strike : currentLeg.strike,
+      expiry: rollFields.expiry !== undefined ? rollFields.expiry : currentLeg.expiry,
+      campaignId: destinationCampaignId,
+      isOpen: true,
+      openDate: rollFields.rollDate,
+      openPrice: rollFields.openPrice,
+      closeDate: null,
+      closePrice: null,
+      updatedAt: now,
+      clientUpdatedAt: now,
+      serverUpdatedAt: null,
+      deleted: false,
+      dirty: true,
+    }));
   });
 
-  await addLeg(uid, {
-    ticker: sourceLeg.ticker,
-    type: sourceLeg.type,     
-    term: sourceLeg.term || "short-term",
-    qty: rollFields.qty !== undefined ? rollFields.qty : sourceLeg.qty,       
-    strike: rollFields.strike !== undefined ? rollFields.strike : sourceLeg.strike, 
-    expiry: rollFields.expiry !== undefined ? rollFields.expiry : sourceLeg.expiry, 
-    campaignId: sourceLeg.campaignId,
-    isOpen: true,
-    openDate: rollFields.rollDate, 
-    openPrice: rollFields.openPrice,
+  try {
+    await syncPendingChanges(uid);
+  } catch (err) {
+    console.error("[rollLeg] sync failed; changes remain saved locally.", err);
+  }
+
+  await syncCampaignDates(uid, sourceCampaignId);
+  if (destinationCampaignId !== sourceCampaignId) {
+    await syncCampaignDates(uid, destinationCampaignId);
+  }
+}
+
+export async function rollLegGroup(uid, sourceLegs, rollFields = {}) {
+  if (!uid || !Array.isArray(sourceLegs) || sourceLegs.length < 2) {
+    throw new Error("A user and at least two open legs are required to roll a group.");
+  }
+
+  const sourceIds = [...new Set(sourceLegs.map((leg) => leg.id).filter(Boolean))];
+  if (sourceIds.length !== sourceLegs.length) {
+    throw new Error("The position contains duplicate or invalid legs. Refresh and try again.");
+  }
+
+  const now = nowMillis();
+  const rolledLegId = crypto.randomUUID();
+  let sourceCampaignId;
+  let destinationCampaignId;
+
+  await dbLocal.transaction("rw", dbLocal.legs, dbLocal.campaigns, async () => {
+    const currentLegs = await Promise.all(sourceIds.map((id) => dbLocal.legs.get(id)));
+    if (currentLegs.some((leg) => !leg || leg.uid !== uid || leg.deleted || !leg.isOpen)) {
+      throw new Error("One or more open legs could not be found. Refresh and try again.");
+    }
+
+    const positionKey = (leg) => JSON.stringify([
+      leg.campaignId ?? null,
+      String(leg.ticker ?? "").toLowerCase(),
+      String(leg.type ?? "").toLowerCase(),
+      leg.strike == null || leg.strike === "" ? null : Number(leg.strike),
+      leg.expiry ? String(leg.expiry).slice(0, 10) : "",
+      leg.term || "short-term",
+    ]);
+    if (new Set(currentLegs.map(positionKey)).size !== 1) {
+      throw new Error("The selected legs are no longer the same position. Refresh and try again.");
+    }
+
+    const totalQty = currentLegs.reduce((sum, leg) => {
+      const qty = Number(leg.qty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new Error("A source leg has an invalid quantity.");
+      }
+      return sum + qty;
+    }, 0);
+    const rollQty = Number(rollFields.rollQty ?? totalQty);
+    const newQty = Number(rollFields.qty ?? rollQty);
+    const isOption = currentLegs[0].type ? !currentLegs[0].type.includes("stock") : true;
+
+    if (!Number.isFinite(rollQty) || rollQty <= 0 || rollQty > totalQty) {
+      throw new Error("Quantity to roll must be greater than zero and no more than the open group quantity.");
+    }
+    if (!Number.isFinite(newQty) || newQty <= 0) {
+      throw new Error("New leg quantity must be greater than zero.");
+    }
+    if (isOption && (!Number.isInteger(rollQty) || !Number.isInteger(newQty))) {
+      throw new Error("Option quantities must be whole contracts.");
+    }
+
+    sourceCampaignId = currentLegs[0].campaignId;
+    destinationCampaignId = await resolveRollCampaignId(
+      uid,
+      currentLegs[0],
+      rollFields.campaignId
+    );
+
+    const dateValue = (value) => {
+      if (typeof value === "number") return value;
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const oldestFirst = currentLegs.sort((a, b) =>
+      dateValue(a.openDate) - dateValue(b.openDate) || String(a.id).localeCompare(String(b.id))
+    );
+    const epsilon = Number.EPSILON * Math.max(totalQty, rollQty, 1) * 10;
+    let remainingToRoll = rollQty;
+
+    for (const leg of oldestFirst) {
+      if (remainingToRoll <= epsilon) break;
+
+      const legQty = Number(leg.qty);
+      const quantityToClose = Math.min(legQty, remainingToRoll);
+      const remainingQty = legQty - quantityToClose;
+      if (remainingQty > epsilon) {
+        await dbLocal.legs.put(normalizeLeg({
+          ...leg,
+          qty: remainingQty,
+          updatedAt: now,
+          clientUpdatedAt: now,
+          dirty: true,
+        }));
+        await dbLocal.legs.put(normalizeLeg({
+          ...leg,
+          id: crypto.randomUUID(),
+          qty: quantityToClose,
+          isOpen: false,
+          closeDate: rollFields.closeDate,
+          closePrice: rollFields.closePrice,
+          updatedAt: now,
+          clientUpdatedAt: now,
+          serverUpdatedAt: null,
+          deleted: false,
+          dirty: true,
+        }));
+      } else {
+        await dbLocal.legs.put(normalizeLeg({
+          ...leg,
+          isOpen: false,
+          closeDate: rollFields.closeDate,
+          closePrice: rollFields.closePrice,
+          updatedAt: now,
+          clientUpdatedAt: now,
+          dirty: true,
+        }));
+      }
+      remainingToRoll -= quantityToClose;
+    }
+
+    if (remainingToRoll > epsilon) {
+      throw new Error("Unable to allocate the requested roll quantity across the open lots.");
+    }
+
+    const sourceLeg = oldestFirst[0];
+    await dbLocal.legs.put(normalizeLeg({
+      id: rolledLegId,
+      uid,
+      ticker: sourceLeg.ticker,
+      type: sourceLeg.type,
+      term: sourceLeg.term || "short-term",
+      qty: newQty,
+      strike: rollFields.strike !== undefined ? rollFields.strike : sourceLeg.strike,
+      expiry: rollFields.expiry !== undefined ? rollFields.expiry : sourceLeg.expiry,
+      campaignId: destinationCampaignId,
+      isOpen: true,
+      openDate: rollFields.rollDate,
+      openPrice: rollFields.openPrice,
+      closeDate: null,
+      closePrice: null,
+      updatedAt: now,
+      clientUpdatedAt: now,
+      serverUpdatedAt: null,
+      deleted: false,
+      dirty: true,
+    }));
   });
+
+  try {
+    await syncPendingChanges(uid);
+  } catch (err) {
+    console.error("[rollLegGroup] sync failed; changes remain saved locally.", err);
+  }
+
+  await syncCampaignDates(uid, sourceCampaignId);
+  if (destinationCampaignId !== sourceCampaignId) {
+    await syncCampaignDates(uid, destinationCampaignId);
+  }
 }
 
 /* -----------------------
