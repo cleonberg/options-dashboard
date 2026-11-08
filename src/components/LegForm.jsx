@@ -79,8 +79,6 @@ export default function LegForm({ selectedCampaign, onAddLeg }) {
             <option value="buy_put">Buy Put</option>
             <option value="buy_stock">Buy Stock</option>
             <option value="sell_stock">Sell Stock</option>
-            <option value="assignment_put">Assignment (Put)</option>
-            <option value="assignment_call">Assignment (Call)</option>
           </select>
         </div>
 
